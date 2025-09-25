@@ -357,10 +357,11 @@ function createPageBreakDivider() {
 }
 
 function appendClone(target, element, logFn, label) {
-  if (!element) return;
+  if (!element) return null;
   const clone = element.cloneNode(true);
   target.appendChild(clone);
   if (logFn) logFn(`append ${label}`);
+  return clone;
 }
 
 function appendRowItem(target, element, logFn, index) {
@@ -449,7 +450,8 @@ class PrintFormFormatter {
       }
     }
     sections.docInfos.forEach((docInfo) => {
-      DomHelpers.appendClone(container, docInfo.element, logFn, docInfo.className);
+      const clone = DomHelpers.appendClone(container, docInfo.element, logFn, docInfo.className);
+      this.registerPageNumberClone(clone);
       if (!this.config[docInfo.repeatFlag]) {
         consumedHeight += heights.docInfos[docInfo.key] || 0;
       }
@@ -469,12 +471,25 @@ class PrintFormFormatter {
     }
     sections.docInfos.forEach((docInfo) => {
       if (this.config[docInfo.repeatFlag]) {
-        DomHelpers.appendClone(container, docInfo.element, logFn, docInfo.className);
+        const clone = DomHelpers.appendClone(container, docInfo.element, logFn, docInfo.className);
+        this.registerPageNumberClone(clone);
       }
     });
     if (this.config.repeatRowheader) {
       DomHelpers.appendClone(container, sections.rowHeader, logFn, "prowheader");
     }
+  }
+
+  registerPageNumberClone(node) {
+    if (!node) {
+      return false;
+    }
+    if (!node.querySelector("[data-page-number], [data-page-total], [data-page-number-container]")) {
+      return false;
+    }
+    updatePageNumberContent(node, this.currentPage, null);
+    this.pageNumberClones.push({ node, pageNumber: this.currentPage });
+    return true;
   }
 
   appendRepeatingFooters(container, sections, logFn) {
@@ -504,12 +519,11 @@ class PrintFormFormatter {
       return;
     }
     const clone = sections.footerPagenum.cloneNode(true);
-    updatePageNumberContent(clone, this.currentPage, null);
     container.appendChild(clone);
+    this.registerPageNumberClone(clone);
     if (logFn) {
       logFn(`append ${FOOTER_PAGENUM_VARIANT.className} page ${this.currentPage}`);
     }
-    this.pageNumberClones.push({ node: clone, pageNumber: this.currentPage });
   }
 
   updatePageNumberTotals() {
