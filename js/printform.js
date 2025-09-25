@@ -1,5 +1,13 @@
 /* eslint-disable no-console */
 
+(function(global) {
+  if (global && global.__printFormScriptLoaded__) {
+    return;
+  }
+  if (global) {
+    global.__printFormScriptLoaded__ = true;
+  }
+
 const TRUE_TOKENS = new Set(["y", "yes", "true", "1"]);
 const FALSE_TOKENS = new Set(["n", "no", "false", "0"]);
 
@@ -808,3 +816,5 @@ window.PrintForm.format = formatSinglePrintForm;
 document.addEventListener("DOMContentLoaded", () => {
   formatAllPrintForms();
 });
+})(typeof window !== "undefined" ? window : this);
+
