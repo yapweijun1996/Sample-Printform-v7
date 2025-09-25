@@ -108,6 +108,13 @@ const CONFIG_DESCRIPTORS = [
   { key: "repeatDocinfo004", datasetKey: "repeatDocinfo004", legacyKey: "repeat_docinfo004", defaultValue: true, parser: parseBooleanFlag },
   { key: "repeatDocinfo005", datasetKey: "repeatDocinfo005", legacyKey: "repeat_docinfo005", defaultValue: true, parser: parseBooleanFlag },
   { key: "repeatRowheader", datasetKey: "repeatRowheader", legacyKey: "repeat_rowheader", defaultValue: true, parser: parseBooleanFlag },
+  {
+    key: "repeatPtacRowheader",
+    datasetKey: "repeatPtacRowheader",
+    legacyKey: "repeat_ptac_rowheader",
+    defaultValue: true,
+    parser: parseBooleanFlag
+  },
   { key: "repeatFooter", datasetKey: "repeatFooter", legacyKey: "repeat_footer", defaultValue: false, parser: parseBooleanFlag },
   { key: "repeatFooter002", datasetKey: "repeatFooter002", legacyKey: "repeat_footer002", defaultValue: false, parser: parseBooleanFlag },
   { key: "repeatFooter003", datasetKey: "repeatFooter003", legacyKey: "repeat_footer003", defaultValue: false, parser: parseBooleanFlag },
@@ -119,6 +126,13 @@ const CONFIG_DESCRIPTORS = [
     key: "insertDummyRowItemWhileFormatTable",
     datasetKey: "insertDummyRowItemWhileFormatTable",
     legacyKey: "insert_dummy_row_item_while_format_table",
+    defaultValue: true,
+    parser: parseBooleanFlag
+  },
+  {
+    key: "insertPtacDummyRowItems",
+    datasetKey: "insertPtacDummyRowItems",
+    legacyKey: "insert_ptac_dummy_row_items",
     defaultValue: true,
     parser: parseBooleanFlag
   },
@@ -303,8 +317,8 @@ function applyDummyRowStep(config, container, heightPerPage, currentHeight) {
   return normalizeHeight(currentHeight);
 }
 
-function applyFooterSpacerWithDummyStep(config, container, heightPerPage, currentHeight) {
-  if (!config.insertFooterSpacerWithDummyRowItemWhileFormatTable) {
+function applyFooterSpacerWithDummyStep(config, container, heightPerPage, currentHeight, skipDummyRowItems) {
+  if (!config.insertFooterSpacerWithDummyRowItemWhileFormatTable || skipDummyRowItems) {
     return {
       currentHeight: normalizeHeight(currentHeight),
       skipFooterSpacer: false
@@ -473,6 +487,26 @@ class PrintFormFormatter {
     };
   }
 
+  isPtacRow(row) {
+    if (!row) {
+      return false;
+    }
+    return row.classList.contains("ptac_segment") || row.classList.contains("ptac");
+  }
+
+  shouldSkipRowHeaderForRow(row) {
+    if (!row) {
+      return false;
+    }
+    if (!this.config.repeatRowheader) {
+      return false;
+    }
+    if (this.config.repeatPtacRowheader) {
+      return false;
+    }
+    return this.isPtacRow(row);
+  }
+
   expandPtacSegments() {
     if (this.formEl.dataset.ptacExpanded === "true") {
       return;
@@ -567,7 +601,7 @@ class PrintFormFormatter {
     return spacer;
   }
 
-  ensureFirstPageSections(container, sections, heights, logFn) {
+  ensureFirstPageSections(container, sections, heights, logFn, skipRowHeader) {
     let consumedHeight = 0;
     if (sections.header) {
       DomHelpers.appendClone(container, sections.header, logFn, "pheader");
@@ -582,7 +616,7 @@ class PrintFormFormatter {
         consumedHeight += heights.docInfos[docInfo.key] || 0;
       }
     });
-    if (sections.rowHeader) {
+    if (sections.rowHeader && !skipRowHeader) {
       DomHelpers.appendClone(container, sections.rowHeader, logFn, "prowheader");
       if (!this.config.repeatRowheader) {
         consumedHeight += heights.rowHeader;
@@ -591,7 +625,7 @@ class PrintFormFormatter {
     return consumedHeight;
   }
 
-  appendRepeatingSections(container, sections, logFn) {
+  appendRepeatingSections(container, sections, logFn, skipRowHeader) {
     if (this.config.repeatHeader) {
       DomHelpers.appendClone(container, sections.header, logFn, "pheader");
     }
@@ -601,7 +635,7 @@ class PrintFormFormatter {
         this.registerPageNumberClone(clone);
       }
     });
-    if (this.config.repeatRowheader) {
+    if (this.config.repeatRowheader && !skipRowHeader) {
       DomHelpers.appendClone(container, sections.rowHeader, logFn, "prowheader");
     }
   }
@@ -695,6 +729,9 @@ class PrintFormFormatter {
 
   renderRows(container, sections, heights, footerState, heightPerPage, footerSpacerTemplate, logFn) {
     let currentHeight = 0;
+    let currentPageLimit = heightPerPage;
+    let currentSkipRowHeader = false;
+    let currentPageIsPtac = false;
     sections.rows.forEach((row, index) => {
       const rowHeight = DomHelpers.measureHeight(row);
       if (!rowHeight) {
@@ -703,69 +740,123 @@ class PrintFormFormatter {
       }
 
       if (currentHeight === 0) {
-        currentHeight += this.ensureFirstPageSections(container, sections, heights, logFn);
+        currentSkipRowHeader = this.shouldSkipRowHeaderForRow(row);
+        currentPageIsPtac = this.isPtacRow(row);
+        currentPageLimit = heightPerPage + (currentSkipRowHeader ? heights.rowHeader : 0);
+        currentHeight += this.ensureFirstPageSections(
+          container,
+          sections,
+          heights,
+          logFn,
+          currentSkipRowHeader
+        );
       }
 
       currentHeight += rowHeight;
       DomHelpers.markAsProcessed(row, "prowitem");
+      const isPtacRow = this.isPtacRow(row);
 
       if (row.classList.contains("tb_page_break_before")) {
         currentHeight -= rowHeight;
+        const nextSkipRowHeader = this.shouldSkipRowHeaderForRow(row);
+        const skipDummyRowItems = currentPageIsPtac && !this.config.insertPtacDummyRowItems;
         currentHeight = this.prepareNextPage(
           container,
           sections,
           logFn,
-          heightPerPage,
+          currentPageLimit,
           currentHeight,
           footerState,
-          footerSpacerTemplate
+          footerSpacerTemplate,
+          nextSkipRowHeader,
+          skipDummyRowItems
         );
+        currentSkipRowHeader = nextSkipRowHeader;
+        currentPageIsPtac = isPtacRow;
+        currentPageLimit = heightPerPage + (currentSkipRowHeader ? heights.rowHeader : 0);
         DomHelpers.appendRowItem(container, row, logFn, index);
         currentHeight = rowHeight;
-      } else if (currentHeight <= heightPerPage) {
+        if (!isPtacRow) {
+          currentPageIsPtac = false;
+        }
+      } else if (currentHeight <= currentPageLimit) {
         DomHelpers.appendRowItem(container, row, logFn, index);
+        if (!isPtacRow) {
+          currentPageIsPtac = false;
+        }
       } else {
         currentHeight -= rowHeight;
+        const nextSkipRowHeader = this.shouldSkipRowHeaderForRow(row);
+        const skipDummyRowItems = currentPageIsPtac && !this.config.insertPtacDummyRowItems;
         currentHeight = this.prepareNextPage(
           container,
           sections,
           logFn,
-          heightPerPage,
+          currentPageLimit,
           currentHeight,
           footerState,
-          footerSpacerTemplate
+          footerSpacerTemplate,
+          nextSkipRowHeader,
+          skipDummyRowItems
         );
+        currentSkipRowHeader = nextSkipRowHeader;
+        currentPageIsPtac = isPtacRow;
+        currentPageLimit = heightPerPage + (currentSkipRowHeader ? heights.rowHeader : 0);
         DomHelpers.appendRowItem(container, row, logFn, index);
         currentHeight = rowHeight;
+        if (!isPtacRow) {
+          currentPageIsPtac = false;
+        }
       }
     });
-    return currentHeight;
+    return {
+      currentHeight,
+      pageLimit: currentPageLimit,
+      isPtacPage: currentPageIsPtac
+    };
   }
 
-  prepareNextPage(container, sections, logFn, heightPerPage, currentHeight, footerState, spacerTemplate) {
+  prepareNextPage(
+    container,
+    sections,
+    logFn,
+    pageLimit,
+    currentHeight,
+    footerState,
+    spacerTemplate,
+    skipRowHeader,
+    skipDummyRowItems
+  ) {
     const filledHeight = this.applyRemainderSpacing(
       container,
-      heightPerPage,
+      pageLimit,
       currentHeight,
       footerState,
-      spacerTemplate
+      spacerTemplate,
+      {
+        skipDummyRowItems
+      }
     );
     this.appendRepeatingFooters(container, sections, logFn);
     container.appendChild(DomHelpers.createPageBreakDivider());
     this.currentPage += 1;
-    this.appendRepeatingSections(container, sections, logFn);
+    this.appendRepeatingSections(container, sections, logFn, skipRowHeader);
     return filledHeight;
   }
 
-  applyRemainderSpacing(container, heightPerPage, currentHeight, footerState, spacerTemplate) {
+  applyRemainderSpacing(container, heightPerPage, currentHeight, footerState, spacerTemplate, options) {
+    const skipDummyRowItems = options && options.skipDummyRowItems;
     let workingHeight = normalizeHeight(currentHeight);
-    workingHeight = applyDummyRowItemsStep(this.config, container, heightPerPage, workingHeight);
+    if (!skipDummyRowItems) {
+      workingHeight = applyDummyRowItemsStep(this.config, container, heightPerPage, workingHeight);
+    }
     workingHeight = applyDummyRowStep(this.config, container, heightPerPage, workingHeight);
     const spacerState = applyFooterSpacerWithDummyStep(
       this.config,
       container,
       heightPerPage,
-      workingHeight
+      workingHeight,
+      skipDummyRowItems
     );
     workingHeight = spacerState.currentHeight;
     if (!spacerState.skipFooterSpacer) {
@@ -835,16 +926,32 @@ class PrintFormFormatter {
     };
   }
 
-  finalizeDocument(container, sections, footerState, heightPerPage, baseHeight, spacerTemplate, logFn) {
+  finalizeDocument(
+    container,
+    sections,
+    footerState,
+    defaultHeightPerPage,
+    renderState,
+    spacerTemplate,
+    logFn
+  ) {
+    const baseHeight = renderState ? renderState.currentHeight : 0;
+    const lastPageLimit = renderState && renderState.pageLimit
+      ? renderState.pageLimit
+      : defaultHeightPerPage;
+    const skipDummyRowItems = renderState && renderState.isPtacPage && !this.config.insertPtacDummyRowItems;
     const allowance = footerState.totalFinal - footerState.repeating;
     const heightWithFinalFooters = baseHeight + allowance;
-    if (heightWithFinalFooters <= heightPerPage) {
+    if (heightWithFinalFooters <= lastPageLimit) {
       this.applyRemainderSpacing(
         container,
-        heightPerPage,
+        lastPageLimit,
         heightWithFinalFooters,
         footerState,
-        spacerTemplate
+        spacerTemplate,
+        {
+          skipDummyRowItems
+        }
       );
       this.appendFinalFooters(container, sections, logFn);
       return;
@@ -854,19 +961,22 @@ class PrintFormFormatter {
       container,
       sections,
       logFn,
-      heightPerPage,
+      lastPageLimit,
       baseHeight,
       footerState,
-      spacerTemplate
+      spacerTemplate,
+      false,
+      skipDummyRowItems
     );
 
     const finalPageStartHeight = allowance;
     this.applyRemainderSpacing(
       container,
-      heightPerPage,
+      defaultHeightPerPage,
       finalPageStartHeight,
       footerState,
-      spacerTemplate
+      spacerTemplate,
+      null
     );
     this.appendFinalFooters(container, sections, logFn);
   }
@@ -880,7 +990,7 @@ class PrintFormFormatter {
     this.markSectionsProcessed(sections);
     const footerState = this.computeFooterState(sections, heights);
     const heightPerPage = this.computeHeightPerPage(sections, heights);
-    const currentHeight = this.renderRows(
+    const renderState = this.renderRows(
       container,
       sections,
       heights,
@@ -895,7 +1005,7 @@ class PrintFormFormatter {
       sections,
       footerState,
       heightPerPage,
-      currentHeight,
+      renderState,
       footerSpacerTemplate,
       logFn
     );

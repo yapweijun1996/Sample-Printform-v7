@@ -26,6 +26,8 @@
 - `expandPtacSegments()` (`js/printform.js:438`) clones the PTAC for every content paragraph (splitting long paragraphs into ~200-word chunks), leaves the heading on the first block, and flags each clone as a `.prowitem`. Pagination then treats PTAC like any other row.
 - For a forced break, give the relevant clone (or upstream block) the `tb_page_break_before` class.
 - If PTAC is absent the formatter skips expansion; no additional config is necessary.
+- Set `data-repeat-ptac-rowheader="n"` when PTAC blocks should appear without the repeating `.prowheader`. The default `y` keeps legacy behavior.
+- Use `data-insert-ptac-dummy-row-items="n"` when PTAC pages must avoid dummy fillers; default `y` preserves legacy padding.
 
 ## Maintaining printform.js
 - Follow ES5 syntax, tabs, and double quotes. New globals belong in `CONFIG_DESCRIPTORS` plus the `.printform` comment block.
