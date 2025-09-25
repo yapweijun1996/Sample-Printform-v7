@@ -15,6 +15,10 @@ const DEFAULT_CONFIG = {
   repeatDocinfo005: true,
   repeatRowheader: true,
   repeatFooter: false,
+  repeatFooter002: false,
+  repeatFooter003: false,
+  repeatFooter004: false,
+  repeatFooter005: false,
   repeatFooterLogo: false,
   insertDummyRowItemWhileFormatTable: true,
   insertDummyRowWhileFormatTable: false,
@@ -31,6 +35,16 @@ const DOCINFO_VARIANTS = [
   { key: "docInfo004", className: "pdocinfo004", repeatFlag: "repeatDocinfo004" },
   { key: "docInfo005", className: "pdocinfo005", repeatFlag: "repeatDocinfo005" }
 ];
+
+const FOOTER_VARIANTS = [
+  { key: "footer", className: "pfooter", repeatFlag: "repeatFooter" },
+  { key: "footer002", className: "pfooter002", repeatFlag: "repeatFooter002" },
+  { key: "footer003", className: "pfooter003", repeatFlag: "repeatFooter003" },
+  { key: "footer004", className: "pfooter004", repeatFlag: "repeatFooter004" },
+  { key: "footer005", className: "pfooter005", repeatFlag: "repeatFooter005" }
+];
+
+const FOOTER_LOGO_VARIANT = { key: "footerLogo", className: "pfooter_logo", repeatFlag: "repeatFooterLogo" };
 
 function parseBooleanFlag(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -89,6 +103,18 @@ function getLegacyConfig() {
   }
   if (g.repeat_footer !== undefined) {
     config.repeatFooter = parseBooleanFlag(g.repeat_footer, DEFAULT_CONFIG.repeatFooter);
+  }
+  if (g.repeat_footer002 !== undefined) {
+    config.repeatFooter002 = parseBooleanFlag(g.repeat_footer002, DEFAULT_CONFIG.repeatFooter002);
+  }
+  if (g.repeat_footer003 !== undefined) {
+    config.repeatFooter003 = parseBooleanFlag(g.repeat_footer003, DEFAULT_CONFIG.repeatFooter003);
+  }
+  if (g.repeat_footer004 !== undefined) {
+    config.repeatFooter004 = parseBooleanFlag(g.repeat_footer004, DEFAULT_CONFIG.repeatFooter004);
+  }
+  if (g.repeat_footer005 !== undefined) {
+    config.repeatFooter005 = parseBooleanFlag(g.repeat_footer005, DEFAULT_CONFIG.repeatFooter005);
   }
   if (g.repeat_footer_logo !== undefined) {
     config.repeatFooterLogo = parseBooleanFlag(g.repeat_footer_logo, DEFAULT_CONFIG.repeatFooterLogo);
@@ -160,6 +186,18 @@ function getDatasetConfig(dataset) {
   }
   if (dataset.repeatFooter) {
     config.repeatFooter = parseBooleanFlag(dataset.repeatFooter, DEFAULT_CONFIG.repeatFooter);
+  }
+  if (dataset.repeatFooter002) {
+    config.repeatFooter002 = parseBooleanFlag(dataset.repeatFooter002, DEFAULT_CONFIG.repeatFooter002);
+  }
+  if (dataset.repeatFooter003) {
+    config.repeatFooter003 = parseBooleanFlag(dataset.repeatFooter003, DEFAULT_CONFIG.repeatFooter003);
+  }
+  if (dataset.repeatFooter004) {
+    config.repeatFooter004 = parseBooleanFlag(dataset.repeatFooter004, DEFAULT_CONFIG.repeatFooter004);
+  }
+  if (dataset.repeatFooter005) {
+    config.repeatFooter005 = parseBooleanFlag(dataset.repeatFooter005, DEFAULT_CONFIG.repeatFooter005);
   }
   if (dataset.repeatFooterLogo) {
     config.repeatFooterLogo = parseBooleanFlag(dataset.repeatFooterLogo, DEFAULT_CONFIG.repeatFooterLogo);
@@ -315,12 +353,12 @@ function applyFooterSpacerWithDummyStep(config, container, heightPerPage, curren
   };
 }
 
-function applyFooterSpacerStep(config, container, heightPerPage, currentHeight, repeatFooterLogo, footerLogoHeight, spacerTemplate) {
+function applyFooterSpacerStep(config, container, heightPerPage, currentHeight, footerState, spacerTemplate) {
   if (!config.insertFooterSpacerWhileFormatTable) return;
   const clone = spacerTemplate.cloneNode(true);
   let remaining = normalizeHeight(heightPerPage - currentHeight);
-  if (!repeatFooterLogo) {
-    remaining -= normalizeHeight(footerLogoHeight);
+  if (footerState && footerState.nonRepeating) {
+    remaining -= normalizeHeight(footerState.nonRepeating);
   }
   clone.style.height = `${Math.max(0, remaining)}px`;
   container.appendChild(clone);
@@ -390,12 +428,23 @@ class PrintFormFormatter {
       };
     }).filter(Boolean);
 
+    const footerVariants = FOOTER_VARIANTS.map((variant) => {
+      const element = this.formEl.querySelector(`.${variant.className}`);
+      if (!element) return null;
+      return {
+        key: variant.key,
+        className: variant.className,
+        repeatFlag: variant.repeatFlag,
+        element
+      };
+    }).filter(Boolean);
+
     return {
       header: this.formEl.querySelector(".pheader"),
       docInfos,
       rowHeader: this.formEl.querySelector(".prowheader"),
-      footer: this.formEl.querySelector(".pfooter"),
-      footerLogo: this.formEl.querySelector(".pfooter_logo"),
+      footerVariants,
+      footerLogo: this.formEl.querySelector(`.${FOOTER_LOGO_VARIANT.className}`),
       rows: Array.from(this.formEl.querySelectorAll(".prowitem"))
     };
   }
@@ -445,20 +494,24 @@ class PrintFormFormatter {
   }
 
   appendRepeatingFooters(container, sections, logFn) {
-    if (this.config.repeatFooter) {
-      appendClone(container, sections.footer, logFn, "pfooter");
-    }
+    sections.footerVariants.forEach((footer) => {
+      if (this.config[footer.repeatFlag]) {
+        appendClone(container, footer.element, logFn, footer.className);
+      }
+    });
     if (this.config.repeatFooterLogo) {
-      appendClone(container, sections.footerLogo, logFn, "pfooter_logo");
+      appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
     }
   }
 
   appendFinalFooters(container, sections, logFn) {
-    appendClone(container, sections.footer, logFn, "pfooter");
-    appendClone(container, sections.footerLogo, logFn, "pfooter_logo");
+    sections.footerVariants.forEach((footer) => {
+      appendClone(container, footer.element, logFn, footer.className);
+    });
+    appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
   }
 
-  applyRemainderSpacing(container, heightPerPage, currentHeight, footerLogoHeight, spacerTemplate) {
+  applyRemainderSpacing(container, heightPerPage, currentHeight, footerState, spacerTemplate) {
     let workingHeight = normalizeHeight(currentHeight);
     workingHeight = applyDummyRowItemsStep(this.config, container, heightPerPage, workingHeight);
     workingHeight = applyDummyRowStep(this.config, container, heightPerPage, workingHeight);
@@ -475,8 +528,7 @@ class PrintFormFormatter {
         container,
         heightPerPage,
         workingHeight,
-        this.config.repeatFooterLogo,
-        footerLogoHeight,
+        footerState,
         spacerTemplate
       );
     }
@@ -496,13 +548,34 @@ class PrintFormFormatter {
     if (this.config.repeatRowheader) {
       available -= heights.rowHeader;
     }
-    if (this.config.repeatFooter) {
-      available -= heights.footer;
-    }
+    sections.footerVariants.forEach((footer) => {
+      if (this.config[footer.repeatFlag]) {
+        available -= heights.footerVariants[footer.key] || 0;
+      }
+    });
     if (this.config.repeatFooterLogo) {
       available -= heights.footerLogo;
     }
     return Math.max(0, available);
+  }
+
+  computeFooterState(sections, heights) {
+    const footerLogoHeight = heights.footerLogo || 0;
+    const totalFooterHeight = sections.footerVariants.reduce((sum, footer) => {
+      const height = heights.footerVariants[footer.key] || 0;
+      return sum + height;
+    }, 0);
+    const totalFinal = totalFooterHeight + footerLogoHeight;
+    const repeating = sections.footerVariants.reduce((sum, footer) => {
+      const height = heights.footerVariants[footer.key] || 0;
+      return this.config[footer.repeatFlag] ? sum + height : sum;
+    }, this.config.repeatFooterLogo ? footerLogoHeight : 0);
+    const nonRepeating = Math.max(0, totalFinal - repeating);
+    return {
+      totalFinal,
+      repeating,
+      nonRepeating
+    };
   }
 
   format() {
@@ -513,12 +586,15 @@ class PrintFormFormatter {
       header: measureHeight(sections.header),
       docInfos: {},
       rowHeader: measureHeight(sections.rowHeader),
-      footer: measureHeight(sections.footer),
+      footerVariants: {},
       footerLogo: measureHeight(sections.footerLogo)
     };
 
     sections.docInfos.forEach((docInfo) => {
       heights.docInfos[docInfo.key] = measureHeight(docInfo.element);
+    });
+    sections.footerVariants.forEach((footer) => {
+      heights.footerVariants[footer.key] = measureHeight(footer.element);
     });
 
     const footerSpacerTemplate = this.createFooterSpacerTemplate();
@@ -528,9 +604,12 @@ class PrintFormFormatter {
       markAsProcessed(docInfo.element, docInfo.className);
     });
     markAsProcessed(sections.rowHeader, "prowheader");
-    markAsProcessed(sections.footer, "pfooter");
-    markAsProcessed(sections.footerLogo, "pfooter_logo");
+    sections.footerVariants.forEach((footer) => {
+      markAsProcessed(footer.element, footer.className);
+    });
+    markAsProcessed(sections.footerLogo, FOOTER_LOGO_VARIANT.className);
 
+    const footerState = this.computeFooterState(sections, heights);
     const heightPerPage = this.computeHeightPerPage(sections, heights);
     let currentHeight = 0;
 
@@ -554,7 +633,7 @@ class PrintFormFormatter {
           container,
           heightPerPage,
           currentHeight,
-          heights.footerLogo,
+          footerState,
           footerSpacerTemplate
         );
         this.appendRepeatingFooters(container, sections, logFn);
@@ -570,7 +649,7 @@ class PrintFormFormatter {
           container,
           heightPerPage,
           currentHeight,
-          heights.footerLogo,
+          footerState,
           footerSpacerTemplate
         );
         this.appendRepeatingFooters(container, sections, logFn);
@@ -581,53 +660,37 @@ class PrintFormFormatter {
       }
     });
 
-    currentHeight += heights.footer + heights.footerLogo;
-    if (this.config.repeatFooter) {
-      currentHeight -= heights.footer;
-    }
-    if (this.config.repeatFooterLogo) {
-      currentHeight -= heights.footerLogo;
-    }
+    currentHeight += footerState.totalFinal;
+    currentHeight -= footerState.repeating;
 
     if (currentHeight <= heightPerPage) {
       currentHeight = this.applyRemainderSpacing(
         container,
         heightPerPage,
         currentHeight,
-        heights.footerLogo,
+        footerState,
         footerSpacerTemplate
       );
       this.appendFinalFooters(container, sections, logFn);
     } else {
-      currentHeight -= heights.footer + heights.footerLogo;
-      if (this.config.repeatFooter) {
-        currentHeight += heights.footer;
-      }
-      if (this.config.repeatFooterLogo) {
-        currentHeight += heights.footerLogo;
-      }
+      currentHeight -= footerState.totalFinal;
+      currentHeight += footerState.repeating;
       currentHeight = this.applyRemainderSpacing(
         container,
         heightPerPage,
         currentHeight,
-        heights.footerLogo,
+        footerState,
         footerSpacerTemplate
       );
       this.appendRepeatingFooters(container, sections, logFn);
       container.appendChild(createPageBreakDivider());
       this.appendRepeatingSections(container, sections, logFn);
-      currentHeight = heights.footer + heights.footerLogo;
-      if (this.config.repeatFooter) {
-        currentHeight -= heights.footer;
-      }
-      if (this.config.repeatFooterLogo) {
-        currentHeight -= heights.footerLogo;
-      }
+      currentHeight = footerState.totalFinal - footerState.repeating;
       currentHeight = this.applyRemainderSpacing(
         container,
         heightPerPage,
         currentHeight,
-        heights.footerLogo,
+        footerState,
         footerSpacerTemplate
       );
       this.appendFinalFooters(container, sections, logFn);
