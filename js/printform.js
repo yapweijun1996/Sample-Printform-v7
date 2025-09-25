@@ -3,30 +3,103 @@
 const TRUE_TOKENS = new Set(["y", "yes", "true", "1"]);
 const FALSE_TOKENS = new Set(["n", "no", "false", "0"]);
 
-const DEFAULT_CONFIG = {
-  papersizeWidth: 750,
-  papersizeHeight: 1050,
-  heightOfDummyRowItem: 18,
-  repeatHeader: true,
-  repeatDocinfo: true,
-  repeatDocinfo002: true,
-  repeatDocinfo003: true,
-  repeatDocinfo004: true,
-  repeatDocinfo005: true,
-  repeatRowheader: true,
-  repeatFooter: false,
-  repeatFooter002: false,
-  repeatFooter003: false,
-  repeatFooter004: false,
-  repeatFooter005: false,
-  repeatFooterLogo: false,
-  insertDummyRowItemWhileFormatTable: true,
-  insertDummyRowWhileFormatTable: false,
-  insertFooterSpacerWhileFormatTable: true,
-  insertFooterSpacerWithDummyRowItemWhileFormatTable: true,
-  customDummyRowItemContent: "",
-  debug: false
-};
+function parseBooleanFlag(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const lowered = String(value).trim().toLowerCase();
+  if (TRUE_TOKENS.has(lowered)) return true;
+  if (FALSE_TOKENS.has(lowered)) return false;
+  return fallback;
+}
+
+function parseNumber(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function parseString(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return String(value);
+}
+
+function normalizeHeight(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.round(num));
+}
+
+/**
+ * @typedef {Object} ConfigDescriptor
+ * @property {string} key Canonical configuration key used within the formatter.
+ * @property {string} datasetKey Matching `data-*` attribute converted to camelCase.
+ * @property {string} legacyKey Historical global variable name supported for backwards compatibility.
+ * @property {*} defaultValue Fallback value when no overrides are supplied.
+ * @property {Function} parser Normalizer that validates incoming values.
+ */
+
+// Every config option lives here to unify defaults, legacy globals, and dataset parsing.
+const CONFIG_DESCRIPTORS = [
+  { key: "papersizeWidth", datasetKey: "papersizeWidth", legacyKey: "papersize_width", defaultValue: 750, parser: parseNumber },
+  { key: "papersizeHeight", datasetKey: "papersizeHeight", legacyKey: "papersize_height", defaultValue: 1050, parser: parseNumber },
+  {
+    key: "heightOfDummyRowItem",
+    datasetKey: "heightOfDummyRowItem",
+    legacyKey: "height_of_dummy_row_item",
+    defaultValue: 18,
+    parser: parseNumber
+  },
+  { key: "repeatHeader", datasetKey: "repeatHeader", legacyKey: "repeat_header", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatDocinfo", datasetKey: "repeatDocinfo", legacyKey: "repeat_docinfo", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatDocinfo002", datasetKey: "repeatDocinfo002", legacyKey: "repeat_docinfo002", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatDocinfo003", datasetKey: "repeatDocinfo003", legacyKey: "repeat_docinfo003", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatDocinfo004", datasetKey: "repeatDocinfo004", legacyKey: "repeat_docinfo004", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatDocinfo005", datasetKey: "repeatDocinfo005", legacyKey: "repeat_docinfo005", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatRowheader", datasetKey: "repeatRowheader", legacyKey: "repeat_rowheader", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatFooter", datasetKey: "repeatFooter", legacyKey: "repeat_footer", defaultValue: false, parser: parseBooleanFlag },
+  { key: "repeatFooter002", datasetKey: "repeatFooter002", legacyKey: "repeat_footer002", defaultValue: false, parser: parseBooleanFlag },
+  { key: "repeatFooter003", datasetKey: "repeatFooter003", legacyKey: "repeat_footer003", defaultValue: false, parser: parseBooleanFlag },
+  { key: "repeatFooter004", datasetKey: "repeatFooter004", legacyKey: "repeat_footer004", defaultValue: false, parser: parseBooleanFlag },
+  { key: "repeatFooter005", datasetKey: "repeatFooter005", legacyKey: "repeat_footer005", defaultValue: false, parser: parseBooleanFlag },
+  { key: "repeatFooterLogo", datasetKey: "repeatFooterLogo", legacyKey: "repeat_footer_logo", defaultValue: false, parser: parseBooleanFlag },
+  {
+    key: "insertDummyRowItemWhileFormatTable",
+    datasetKey: "insertDummyRowItemWhileFormatTable",
+    legacyKey: "insert_dummy_row_item_while_format_table",
+    defaultValue: true,
+    parser: parseBooleanFlag
+  },
+  {
+    key: "insertDummyRowWhileFormatTable",
+    datasetKey: "insertDummyRowWhileFormatTable",
+    legacyKey: "insert_dummy_row_while_format_table",
+    defaultValue: false,
+    parser: parseBooleanFlag
+  },
+  {
+    key: "insertFooterSpacerWhileFormatTable",
+    datasetKey: "insertFooterSpacerWhileFormatTable",
+    legacyKey: "insert_footer_spacer_while_format_table",
+    defaultValue: true,
+    parser: parseBooleanFlag
+  },
+  {
+    key: "insertFooterSpacerWithDummyRowItemWhileFormatTable",
+    datasetKey: "insertFooterSpacerWithDummyRowItemWhileFormatTable",
+    legacyKey: "insert_footer_spacer_with_dummy_row_item_while_format_table",
+    defaultValue: true,
+    parser: parseBooleanFlag
+  },
+  {
+    key: "customDummyRowItemContent",
+    datasetKey: "customDummyRowItemContent",
+    legacyKey: "custom_dummy_row_item_content",
+    defaultValue: "",
+    parser: parseString
+  },
+  { key: "debug", datasetKey: "debug", legacyKey: "debug_printform", defaultValue: false, parser: parseBooleanFlag }
+];
 
 const DOCINFO_VARIANTS = [
   { key: "docInfo", className: "pdocinfo", repeatFlag: "repeatDocinfo" },
@@ -46,193 +119,40 @@ const FOOTER_VARIANTS = [
 
 const FOOTER_LOGO_VARIANT = { key: "footerLogo", className: "pfooter_logo", repeatFlag: "repeatFooterLogo" };
 
-function parseBooleanFlag(value, fallback) {
-  if (value === undefined || value === null || value === "") return fallback;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  const lowered = String(value).trim().toLowerCase();
-  if (TRUE_TOKENS.has(lowered)) return true;
-  if (FALSE_TOKENS.has(lowered)) return false;
-  return fallback;
+const DEFAULT_CONFIG = CONFIG_DESCRIPTORS.reduce((accumulator, descriptor) => {
+  accumulator[descriptor.key] = descriptor.defaultValue;
+  return accumulator;
+}, {});
+
+function readConfigFromLegacy(descriptors) {
+  const source = typeof window === "undefined" ? {} : window;
+  return descriptors.reduce((config, descriptor) => {
+    if (!descriptor.legacyKey) return config;
+    const value = source[descriptor.legacyKey];
+    if (value === undefined || value === null || value === "") return config;
+    config[descriptor.key] = descriptor.parser(value, descriptor.defaultValue);
+    return config;
+  }, {});
 }
 
-function parseNumber(value, fallback) {
-  if (value === undefined || value === null || value === "") return fallback;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
-}
-
-function normalizeHeight(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, Math.round(num));
+function readConfigFromDataset(descriptors, dataset) {
+  const source = dataset || {};
+  return descriptors.reduce((config, descriptor) => {
+    if (!descriptor.datasetKey) return config;
+    if (!Object.prototype.hasOwnProperty.call(source, descriptor.datasetKey)) return config;
+    const value = source[descriptor.datasetKey];
+    if (value === undefined || value === null || value === "") return config;
+    config[descriptor.key] = descriptor.parser(value, descriptor.defaultValue);
+    return config;
+  }, {});
 }
 
 function getLegacyConfig() {
-  const g = typeof window === "undefined" ? {} : window;
-  const config = {};
-  if (g.papersize_width !== undefined) {
-    config.papersizeWidth = parseNumber(g.papersize_width, DEFAULT_CONFIG.papersizeWidth);
-  }
-  if (g.papersize_height !== undefined) {
-    config.papersizeHeight = parseNumber(g.papersize_height, DEFAULT_CONFIG.papersizeHeight);
-  }
-  if (g.height_of_dummy_row_item !== undefined) {
-    config.heightOfDummyRowItem = parseNumber(g.height_of_dummy_row_item, DEFAULT_CONFIG.heightOfDummyRowItem);
-  }
-  if (g.repeat_header !== undefined) {
-    config.repeatHeader = parseBooleanFlag(g.repeat_header, DEFAULT_CONFIG.repeatHeader);
-  }
-  if (g.repeat_docinfo !== undefined) {
-    config.repeatDocinfo = parseBooleanFlag(g.repeat_docinfo, DEFAULT_CONFIG.repeatDocinfo);
-  }
-  if (g.repeat_docinfo002 !== undefined) {
-    config.repeatDocinfo002 = parseBooleanFlag(g.repeat_docinfo002, DEFAULT_CONFIG.repeatDocinfo002);
-  }
-  if (g.repeat_docinfo003 !== undefined) {
-    config.repeatDocinfo003 = parseBooleanFlag(g.repeat_docinfo003, DEFAULT_CONFIG.repeatDocinfo003);
-  }
-  if (g.repeat_docinfo004 !== undefined) {
-    config.repeatDocinfo004 = parseBooleanFlag(g.repeat_docinfo004, DEFAULT_CONFIG.repeatDocinfo004);
-  }
-  if (g.repeat_docinfo005 !== undefined) {
-    config.repeatDocinfo005 = parseBooleanFlag(g.repeat_docinfo005, DEFAULT_CONFIG.repeatDocinfo005);
-  }
-  if (g.repeat_rowheader !== undefined) {
-    config.repeatRowheader = parseBooleanFlag(g.repeat_rowheader, DEFAULT_CONFIG.repeatRowheader);
-  }
-  if (g.repeat_footer !== undefined) {
-    config.repeatFooter = parseBooleanFlag(g.repeat_footer, DEFAULT_CONFIG.repeatFooter);
-  }
-  if (g.repeat_footer002 !== undefined) {
-    config.repeatFooter002 = parseBooleanFlag(g.repeat_footer002, DEFAULT_CONFIG.repeatFooter002);
-  }
-  if (g.repeat_footer003 !== undefined) {
-    config.repeatFooter003 = parseBooleanFlag(g.repeat_footer003, DEFAULT_CONFIG.repeatFooter003);
-  }
-  if (g.repeat_footer004 !== undefined) {
-    config.repeatFooter004 = parseBooleanFlag(g.repeat_footer004, DEFAULT_CONFIG.repeatFooter004);
-  }
-  if (g.repeat_footer005 !== undefined) {
-    config.repeatFooter005 = parseBooleanFlag(g.repeat_footer005, DEFAULT_CONFIG.repeatFooter005);
-  }
-  if (g.repeat_footer_logo !== undefined) {
-    config.repeatFooterLogo = parseBooleanFlag(g.repeat_footer_logo, DEFAULT_CONFIG.repeatFooterLogo);
-  }
-  if (g.insert_dummy_row_item_while_format_table !== undefined) {
-    config.insertDummyRowItemWhileFormatTable = parseBooleanFlag(
-      g.insert_dummy_row_item_while_format_table,
-      DEFAULT_CONFIG.insertDummyRowItemWhileFormatTable
-    );
-  }
-  if (g.insert_dummy_row_while_format_table !== undefined) {
-    config.insertDummyRowWhileFormatTable = parseBooleanFlag(
-      g.insert_dummy_row_while_format_table,
-      DEFAULT_CONFIG.insertDummyRowWhileFormatTable
-    );
-  }
-  if (g.insert_footer_spacer_while_format_table !== undefined) {
-    config.insertFooterSpacerWhileFormatTable = parseBooleanFlag(
-      g.insert_footer_spacer_while_format_table,
-      DEFAULT_CONFIG.insertFooterSpacerWhileFormatTable
-    );
-  }
-  if (g.insert_footer_spacer_with_dummy_row_item_while_format_table !== undefined) {
-    config.insertFooterSpacerWithDummyRowItemWhileFormatTable = parseBooleanFlag(
-      g.insert_footer_spacer_with_dummy_row_item_while_format_table,
-      DEFAULT_CONFIG.insertFooterSpacerWithDummyRowItemWhileFormatTable
-    );
-  }
-  if (g.custom_dummy_row_item_content !== undefined) {
-    config.customDummyRowItemContent = g.custom_dummy_row_item_content;
-  }
-  if (g.debug_printform !== undefined) {
-    config.debug = parseBooleanFlag(g.debug_printform, DEFAULT_CONFIG.debug);
-  }
-  return config;
+  return readConfigFromLegacy(CONFIG_DESCRIPTORS);
 }
 
 function getDatasetConfig(dataset) {
-  const config = {};
-  if (dataset.papersizeWidth) {
-    config.papersizeWidth = parseNumber(dataset.papersizeWidth, DEFAULT_CONFIG.papersizeWidth);
-  }
-  if (dataset.papersizeHeight) {
-    config.papersizeHeight = parseNumber(dataset.papersizeHeight, DEFAULT_CONFIG.papersizeHeight);
-  }
-  if (dataset.heightOfDummyRowItem) {
-    config.heightOfDummyRowItem = parseNumber(dataset.heightOfDummyRowItem, DEFAULT_CONFIG.heightOfDummyRowItem);
-  }
-  if (dataset.repeatHeader) {
-    config.repeatHeader = parseBooleanFlag(dataset.repeatHeader, DEFAULT_CONFIG.repeatHeader);
-  }
-  if (dataset.repeatDocinfo) {
-    config.repeatDocinfo = parseBooleanFlag(dataset.repeatDocinfo, DEFAULT_CONFIG.repeatDocinfo);
-  }
-  if (dataset.repeatDocinfo002) {
-    config.repeatDocinfo002 = parseBooleanFlag(dataset.repeatDocinfo002, DEFAULT_CONFIG.repeatDocinfo002);
-  }
-  if (dataset.repeatDocinfo003) {
-    config.repeatDocinfo003 = parseBooleanFlag(dataset.repeatDocinfo003, DEFAULT_CONFIG.repeatDocinfo003);
-  }
-  if (dataset.repeatDocinfo004) {
-    config.repeatDocinfo004 = parseBooleanFlag(dataset.repeatDocinfo004, DEFAULT_CONFIG.repeatDocinfo004);
-  }
-  if (dataset.repeatDocinfo005) {
-    config.repeatDocinfo005 = parseBooleanFlag(dataset.repeatDocinfo005, DEFAULT_CONFIG.repeatDocinfo005);
-  }
-  if (dataset.repeatRowheader) {
-    config.repeatRowheader = parseBooleanFlag(dataset.repeatRowheader, DEFAULT_CONFIG.repeatRowheader);
-  }
-  if (dataset.repeatFooter) {
-    config.repeatFooter = parseBooleanFlag(dataset.repeatFooter, DEFAULT_CONFIG.repeatFooter);
-  }
-  if (dataset.repeatFooter002) {
-    config.repeatFooter002 = parseBooleanFlag(dataset.repeatFooter002, DEFAULT_CONFIG.repeatFooter002);
-  }
-  if (dataset.repeatFooter003) {
-    config.repeatFooter003 = parseBooleanFlag(dataset.repeatFooter003, DEFAULT_CONFIG.repeatFooter003);
-  }
-  if (dataset.repeatFooter004) {
-    config.repeatFooter004 = parseBooleanFlag(dataset.repeatFooter004, DEFAULT_CONFIG.repeatFooter004);
-  }
-  if (dataset.repeatFooter005) {
-    config.repeatFooter005 = parseBooleanFlag(dataset.repeatFooter005, DEFAULT_CONFIG.repeatFooter005);
-  }
-  if (dataset.repeatFooterLogo) {
-    config.repeatFooterLogo = parseBooleanFlag(dataset.repeatFooterLogo, DEFAULT_CONFIG.repeatFooterLogo);
-  }
-  if (dataset.insertDummyRowItemWhileFormatTable) {
-    config.insertDummyRowItemWhileFormatTable = parseBooleanFlag(
-      dataset.insertDummyRowItemWhileFormatTable,
-      DEFAULT_CONFIG.insertDummyRowItemWhileFormatTable
-    );
-  }
-  if (dataset.insertDummyRowWhileFormatTable) {
-    config.insertDummyRowWhileFormatTable = parseBooleanFlag(
-      dataset.insertDummyRowWhileFormatTable,
-      DEFAULT_CONFIG.insertDummyRowWhileFormatTable
-    );
-  }
-  if (dataset.insertFooterSpacerWhileFormatTable) {
-    config.insertFooterSpacerWhileFormatTable = parseBooleanFlag(
-      dataset.insertFooterSpacerWhileFormatTable,
-      DEFAULT_CONFIG.insertFooterSpacerWhileFormatTable
-    );
-  }
-  if (dataset.insertFooterSpacerWithDummyRowItemWhileFormatTable) {
-    config.insertFooterSpacerWithDummyRowItemWhileFormatTable = parseBooleanFlag(
-      dataset.insertFooterSpacerWithDummyRowItemWhileFormatTable,
-      DEFAULT_CONFIG.insertFooterSpacerWithDummyRowItemWhileFormatTable
-    );
-  }
-  if (dataset.customDummyRowItemContent) {
-    config.customDummyRowItemContent = dataset.customDummyRowItemContent;
-  }
-  if (dataset.debug) {
-    config.debug = parseBooleanFlag(dataset.debug, DEFAULT_CONFIG.debug);
-  }
-  return config;
+  return readConfigFromDataset(CONFIG_DESCRIPTORS, dataset);
 }
 
 function resolveTemplateOverride(formEl, fallback) {
@@ -396,6 +316,14 @@ function appendRowItem(target, element, logFn, index) {
   target.appendChild(clone);
   if (logFn) logFn(`append prowitem ${index}`);
 }
+
+const DomHelpers = {
+  markAsProcessed,
+  measureHeight,
+  createPageBreakDivider,
+  appendClone,
+  appendRowItem
+};
 class PrintFormFormatter {
   constructor(formEl, config) {
     this.formEl = formEl;
@@ -459,19 +387,19 @@ class PrintFormFormatter {
   ensureFirstPageSections(container, sections, heights, logFn) {
     let consumedHeight = 0;
     if (sections.header) {
-      appendClone(container, sections.header, logFn, "pheader");
+      DomHelpers.appendClone(container, sections.header, logFn, "pheader");
       if (!this.config.repeatHeader) {
         consumedHeight += heights.header;
       }
     }
     sections.docInfos.forEach((docInfo) => {
-      appendClone(container, docInfo.element, logFn, docInfo.className);
+      DomHelpers.appendClone(container, docInfo.element, logFn, docInfo.className);
       if (!this.config[docInfo.repeatFlag]) {
         consumedHeight += heights.docInfos[docInfo.key] || 0;
       }
     });
     if (sections.rowHeader) {
-      appendClone(container, sections.rowHeader, logFn, "prowheader");
+      DomHelpers.appendClone(container, sections.rowHeader, logFn, "prowheader");
       if (!this.config.repeatRowheader) {
         consumedHeight += heights.rowHeader;
       }
@@ -481,48 +409,140 @@ class PrintFormFormatter {
 
   appendRepeatingSections(container, sections, logFn) {
     if (this.config.repeatHeader) {
-      appendClone(container, sections.header, logFn, "pheader");
+      DomHelpers.appendClone(container, sections.header, logFn, "pheader");
     }
     sections.docInfos.forEach((docInfo) => {
       if (this.config[docInfo.repeatFlag]) {
-        appendClone(container, docInfo.element, logFn, docInfo.className);
+        DomHelpers.appendClone(container, docInfo.element, logFn, docInfo.className);
       }
     });
     if (this.config.repeatRowheader) {
-      appendClone(container, sections.rowHeader, logFn, "prowheader");
+      DomHelpers.appendClone(container, sections.rowHeader, logFn, "prowheader");
     }
   }
 
   appendRepeatingFooters(container, sections, logFn) {
     sections.footerVariants.forEach((footer) => {
       if (this.config[footer.repeatFlag]) {
-        appendClone(container, footer.element, logFn, footer.className);
+        DomHelpers.appendClone(container, footer.element, logFn, footer.className);
       }
     });
     if (this.config.repeatFooterLogo) {
-      appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
+      DomHelpers.appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
     }
   }
 
   appendFinalFooters(container, sections, logFn) {
     sections.footerVariants.forEach((footer) => {
-      appendClone(container, footer.element, logFn, footer.className);
+      DomHelpers.appendClone(container, footer.element, logFn, footer.className);
     });
-    appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
+    DomHelpers.appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
+  }
+
+  measureSections(sections) {
+    const heights = {
+      header: DomHelpers.measureHeight(sections.header),
+      docInfos: {},
+      rowHeader: DomHelpers.measureHeight(sections.rowHeader),
+      footerVariants: {},
+      footerLogo: DomHelpers.measureHeight(sections.footerLogo)
+    };
+    sections.docInfos.forEach((docInfo) => {
+      heights.docInfos[docInfo.key] = DomHelpers.measureHeight(docInfo.element);
+    });
+    sections.footerVariants.forEach((footer) => {
+      heights.footerVariants[footer.key] = DomHelpers.measureHeight(footer.element);
+    });
+    return heights;
+  }
+
+  markSectionsProcessed(sections) {
+    DomHelpers.markAsProcessed(sections.header, "pheader");
+    sections.docInfos.forEach((docInfo) => {
+      DomHelpers.markAsProcessed(docInfo.element, docInfo.className);
+    });
+    DomHelpers.markAsProcessed(sections.rowHeader, "prowheader");
+    sections.footerVariants.forEach((footer) => {
+      DomHelpers.markAsProcessed(footer.element, footer.className);
+    });
+    DomHelpers.markAsProcessed(sections.footerLogo, FOOTER_LOGO_VARIANT.className);
+  }
+
+  renderRows(container, sections, heights, footerState, heightPerPage, footerSpacerTemplate, logFn) {
+    let currentHeight = 0;
+    sections.rows.forEach((row, index) => {
+      const rowHeight = DomHelpers.measureHeight(row);
+      if (!rowHeight) {
+        DomHelpers.markAsProcessed(row, "prowitem");
+        return;
+      }
+
+      if (currentHeight === 0) {
+        currentHeight += this.ensureFirstPageSections(container, sections, heights, logFn);
+      }
+
+      currentHeight += rowHeight;
+      DomHelpers.markAsProcessed(row, "prowitem");
+
+      if (row.classList.contains("tb_page_break_before")) {
+        currentHeight -= rowHeight;
+        currentHeight = this.prepareNextPage(
+          container,
+          sections,
+          logFn,
+          heightPerPage,
+          currentHeight,
+          footerState,
+          footerSpacerTemplate
+        );
+        DomHelpers.appendRowItem(container, row, logFn, index);
+        currentHeight = rowHeight;
+      } else if (currentHeight <= heightPerPage) {
+        DomHelpers.appendRowItem(container, row, logFn, index);
+      } else {
+        currentHeight -= rowHeight;
+        currentHeight = this.prepareNextPage(
+          container,
+          sections,
+          logFn,
+          heightPerPage,
+          currentHeight,
+          footerState,
+          footerSpacerTemplate
+        );
+        DomHelpers.appendRowItem(container, row, logFn, index);
+        currentHeight = rowHeight;
+      }
+    });
+    return currentHeight;
+  }
+
+  prepareNextPage(container, sections, logFn, heightPerPage, currentHeight, footerState, spacerTemplate) {
+    const filledHeight = this.applyRemainderSpacing(
+      container,
+      heightPerPage,
+      currentHeight,
+      footerState,
+      spacerTemplate
+    );
+    this.appendRepeatingFooters(container, sections, logFn);
+    container.appendChild(DomHelpers.createPageBreakDivider());
+    this.appendRepeatingSections(container, sections, logFn);
+    return filledHeight;
   }
 
   applyRemainderSpacing(container, heightPerPage, currentHeight, footerState, spacerTemplate) {
     let workingHeight = normalizeHeight(currentHeight);
     workingHeight = applyDummyRowItemsStep(this.config, container, heightPerPage, workingHeight);
     workingHeight = applyDummyRowStep(this.config, container, heightPerPage, workingHeight);
-    const footerSpacerState = applyFooterSpacerWithDummyStep(
+    const spacerState = applyFooterSpacerWithDummyStep(
       this.config,
       container,
       heightPerPage,
       workingHeight
     );
-    workingHeight = footerSpacerState.currentHeight;
-    if (!footerSpacerState.skipFooterSpacer) {
+    workingHeight = spacerState.currentHeight;
+    if (!spacerState.skipFooterSpacer) {
       applyFooterSpacerStep(
         this.config,
         container,
@@ -532,7 +552,7 @@ class PrintFormFormatter {
         spacerTemplate
       );
     }
-    return workingHeight;
+    return normalizeHeight(workingHeight);
   }
 
   computeHeightPerPage(sections, heights) {
@@ -578,123 +598,70 @@ class PrintFormFormatter {
     };
   }
 
+  finalizeDocument(container, sections, footerState, heightPerPage, baseHeight, spacerTemplate, logFn) {
+    const allowance = footerState.totalFinal - footerState.repeating;
+    const heightWithFinalFooters = baseHeight + allowance;
+    if (heightWithFinalFooters <= heightPerPage) {
+      this.applyRemainderSpacing(
+        container,
+        heightPerPage,
+        heightWithFinalFooters,
+        footerState,
+        spacerTemplate
+      );
+      this.appendFinalFooters(container, sections, logFn);
+      return;
+    }
+
+    this.prepareNextPage(
+      container,
+      sections,
+      logFn,
+      heightPerPage,
+      baseHeight,
+      footerState,
+      spacerTemplate
+    );
+
+    const finalPageStartHeight = allowance;
+    this.applyRemainderSpacing(
+      container,
+      heightPerPage,
+      finalPageStartHeight,
+      footerState,
+      spacerTemplate
+    );
+    this.appendFinalFooters(container, sections, logFn);
+  }
+
   format() {
     const logFn = this.debug ? this.log.bind(this) : null;
     const container = this.initializeOutputContainer();
     const sections = this.collectSections();
-    const heights = {
-      header: measureHeight(sections.header),
-      docInfos: {},
-      rowHeader: measureHeight(sections.rowHeader),
-      footerVariants: {},
-      footerLogo: measureHeight(sections.footerLogo)
-    };
-
-    sections.docInfos.forEach((docInfo) => {
-      heights.docInfos[docInfo.key] = measureHeight(docInfo.element);
-    });
-    sections.footerVariants.forEach((footer) => {
-      heights.footerVariants[footer.key] = measureHeight(footer.element);
-    });
-
+    const heights = this.measureSections(sections);
     const footerSpacerTemplate = this.createFooterSpacerTemplate();
-
-    markAsProcessed(sections.header, "pheader");
-    sections.docInfos.forEach((docInfo) => {
-      markAsProcessed(docInfo.element, docInfo.className);
-    });
-    markAsProcessed(sections.rowHeader, "prowheader");
-    sections.footerVariants.forEach((footer) => {
-      markAsProcessed(footer.element, footer.className);
-    });
-    markAsProcessed(sections.footerLogo, FOOTER_LOGO_VARIANT.className);
-
+    this.markSectionsProcessed(sections);
     const footerState = this.computeFooterState(sections, heights);
     const heightPerPage = this.computeHeightPerPage(sections, heights);
-    let currentHeight = 0;
+    const currentHeight = this.renderRows(
+      container,
+      sections,
+      heights,
+      footerState,
+      heightPerPage,
+      footerSpacerTemplate,
+      logFn
+    );
 
-    sections.rows.forEach((row, index) => {
-      const rowHeight = measureHeight(row);
-      if (!rowHeight) {
-        markAsProcessed(row, "prowitem");
-        return;
-      }
-
-      if (currentHeight === 0) {
-        currentHeight += this.ensureFirstPageSections(container, sections, heights, logFn);
-      }
-
-      currentHeight += rowHeight;
-      markAsProcessed(row, "prowitem");
-
-      if (row.classList.contains("tb_page_break_before")) {
-        currentHeight -= rowHeight;
-        currentHeight = this.applyRemainderSpacing(
-          container,
-          heightPerPage,
-          currentHeight,
-          footerState,
-          footerSpacerTemplate
-        );
-        this.appendRepeatingFooters(container, sections, logFn);
-        container.appendChild(createPageBreakDivider());
-        this.appendRepeatingSections(container, sections, logFn);
-        appendRowItem(container, row, logFn, index);
-        currentHeight = rowHeight;
-      } else if (currentHeight <= heightPerPage) {
-        appendRowItem(container, row, logFn, index);
-      } else {
-        currentHeight -= rowHeight;
-        currentHeight = this.applyRemainderSpacing(
-          container,
-          heightPerPage,
-          currentHeight,
-          footerState,
-          footerSpacerTemplate
-        );
-        this.appendRepeatingFooters(container, sections, logFn);
-        container.appendChild(createPageBreakDivider());
-        this.appendRepeatingSections(container, sections, logFn);
-        appendRowItem(container, row, logFn, index);
-        currentHeight = rowHeight;
-      }
-    });
-
-    currentHeight += footerState.totalFinal;
-    currentHeight -= footerState.repeating;
-
-    if (currentHeight <= heightPerPage) {
-      currentHeight = this.applyRemainderSpacing(
-        container,
-        heightPerPage,
-        currentHeight,
-        footerState,
-        footerSpacerTemplate
-      );
-      this.appendFinalFooters(container, sections, logFn);
-    } else {
-      currentHeight -= footerState.totalFinal;
-      currentHeight += footerState.repeating;
-      currentHeight = this.applyRemainderSpacing(
-        container,
-        heightPerPage,
-        currentHeight,
-        footerState,
-        footerSpacerTemplate
-      );
-      this.appendRepeatingFooters(container, sections, logFn);
-      container.appendChild(createPageBreakDivider());
-      this.appendRepeatingSections(container, sections, logFn);
-      currentHeight = footerState.totalFinal - footerState.repeating;
-      currentHeight = this.applyRemainderSpacing(
-        container,
-        heightPerPage,
-        currentHeight,
-        footerState,
-        footerSpacerTemplate
-      );
-      this.appendFinalFooters(container, sections, logFn);
-    }
+    this.finalizeDocument(
+      container,
+      sections,
+      footerState,
+      heightPerPage,
+      currentHeight,
+      footerSpacerTemplate,
+      logFn
+    );
 
     container.classList.add("printform_formatter_processed");
     this.formEl.remove();
@@ -729,7 +696,7 @@ async function formatAllPrintForms(overrides = {}) {
       const formatter = new PrintFormFormatter(formEl, config);
       const formatted = formatter.format();
       if (index > 0 && formatted && formatted.parentNode) {
-        formatted.parentNode.insertBefore(createPageBreakDivider(), formatted);
+        formatted.parentNode.insertBefore(DomHelpers.createPageBreakDivider(), formatted);
       }
     } catch (error) {
       console.error("printform format error", error);
