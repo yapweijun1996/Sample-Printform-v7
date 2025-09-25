@@ -378,6 +378,44 @@ const DomHelpers = {
   appendClone,
   appendRowItem
 };
+
+var PTAC_MAX_WORDS_PER_SEGMENT = 200;
+
+function convertWordsToHtml(node, words) {
+  var clone = node.cloneNode(false);
+  clone.textContent = words.join(" ");
+  return clone.outerHTML || "";
+}
+
+function splitParagraphIntoHtmlChunks(node, maxWords) {
+  if (!node) {
+    return [];
+  }
+  var text = (node.textContent || "").trim();
+  if (!text) {
+    return [node.outerHTML || ""];
+  }
+  var words = text.split(/\s+/).filter(function(word) {
+    return word && word.length > 0;
+  });
+  if (words.length <= maxWords) {
+    return [node.outerHTML || ""];
+  }
+  var chunks = [];
+  var buffer = [];
+  for (var index = 0; index < words.length; index += 1) {
+    buffer.push(words[index]);
+    if (buffer.length >= maxWords) {
+      chunks.push(convertWordsToHtml(node, buffer));
+      buffer = [];
+    }
+  }
+  if (buffer.length > 0) {
+    chunks.push(convertWordsToHtml(node, buffer));
+  }
+  return chunks;
+}
+
 class PrintFormFormatter {
   constructor(formEl, config) {
     this.formEl = formEl;
@@ -401,6 +439,7 @@ class PrintFormFormatter {
   }
 
   collectSections() {
+    this.expandPtacSegments();
     const docInfos = DOCINFO_VARIANTS.map((variant) => {
       const element = this.formEl.querySelector(`.${variant.className}`);
       if (!element) return null;
@@ -432,6 +471,93 @@ class PrintFormFormatter {
       footerPagenum: this.formEl.querySelector(`.${FOOTER_PAGENUM_VARIANT.className}`),
       rows: Array.from(this.formEl.querySelectorAll(".prowitem"))
     };
+  }
+
+  expandPtacSegments() {
+    if (this.formEl.dataset.ptacExpanded === "true") {
+      return;
+    }
+    const ptacTables = Array.from(this.formEl.querySelectorAll(".ptac"));
+    if (ptacTables.length === 0) {
+      this.formEl.dataset.ptacExpanded = "true";
+      return;
+    }
+
+    ptacTables.forEach((ptacRoot) => {
+      if (!ptacRoot || ptacRoot.dataset.ptacSegment === "true") {
+        return;
+      }
+
+      const contentWrapper = ptacRoot.querySelector("td > div") || ptacRoot.querySelector("td");
+      if (!contentWrapper) {
+        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.dataset.ptacSegment = "true";
+        return;
+      }
+
+      const allParagraphs = Array.from(contentWrapper.querySelectorAll("p"));
+      var headingNode = null;
+      if (allParagraphs.length > 1) {
+        headingNode = allParagraphs.shift();
+      }
+      const paragraphs = allParagraphs;
+
+      if (paragraphs.length === 0) {
+        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.dataset.ptacSegment = "true";
+        return;
+      }
+
+      const headingHTML = headingNode ? headingNode.outerHTML : "";
+      const paragraphHTML = paragraphs.reduce(function(accumulator, node) {
+        const chunks = splitParagraphIntoHtmlChunks(node, PTAC_MAX_WORDS_PER_SEGMENT);
+        return accumulator.concat(chunks);
+      }, []);
+
+      if (paragraphHTML.length === 0) {
+        contentWrapper.innerHTML = headingHTML;
+        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.dataset.ptacSegment = "true";
+        return;
+      }
+
+      const segments = [];
+      if (headingHTML) {
+        segments.push(headingHTML + paragraphHTML[0]);
+        for (var segIndex = 1; segIndex < paragraphHTML.length; segIndex += 1) {
+          segments.push(paragraphHTML[segIndex]);
+        }
+      } else {
+        for (var segIndexAlt = 0; segIndexAlt < paragraphHTML.length; segIndexAlt += 1) {
+          segments.push(paragraphHTML[segIndexAlt]);
+        }
+      }
+
+      if (segments.length === 0) {
+        contentWrapper.innerHTML = headingHTML;
+        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.dataset.ptacSegment = "true";
+        return;
+      }
+
+      contentWrapper.innerHTML = segments[0];
+      ptacRoot.classList.add("prowitem", "ptac_segment");
+      ptacRoot.dataset.ptacSegment = "true";
+
+      var lastNode = ptacRoot;
+      for (var index = 1; index < segments.length; index += 1) {
+        const clone = ptacRoot.cloneNode(true);
+        clone.dataset.ptacSegment = "true";
+        const cloneWrapper = clone.querySelector("td > div") || clone.querySelector("td");
+        if (cloneWrapper) {
+          cloneWrapper.innerHTML = segments[index];
+        }
+        lastNode.parentNode.insertBefore(clone, lastNode.nextSibling);
+        lastNode = clone;
+      }
+    });
+
+    this.formEl.dataset.ptacExpanded = "true";
   }
 
   createFooterSpacerTemplate() {
@@ -831,4 +957,3 @@ document.addEventListener("DOMContentLoaded", () => {
   formatAllPrintForms();
 });
 })(typeof window !== "undefined" ? window : this);
-
