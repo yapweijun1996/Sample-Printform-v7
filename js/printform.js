@@ -30,6 +30,49 @@ function normalizeHeight(value) {
   return Math.max(0, Math.round(num));
 }
 
+function ensurePageNumberPlaceholder(element) {
+  if (!element) return null;
+  if (element.__pageNumberPlaceholder) {
+    return element.__pageNumberPlaceholder;
+  }
+  const doc = element.ownerDocument || (typeof document !== "undefined" ? document : null);
+  if (!doc) return null;
+  let container = element.querySelector("[data-page-number-container]");
+  if (!container) {
+    container = element.querySelector("td:last-child") || element.querySelector("td") || element;
+  }
+  const placeholder = doc.createElement("span");
+  placeholder.className = "printform_page_number_placeholder";
+  container.appendChild(placeholder);
+  element.__pageNumberPlaceholder = placeholder;
+  return placeholder;
+}
+
+function updatePageNumberContent(element, pageNumber, totalPages) {
+  if (!element) return;
+  const numberTargets = element.querySelectorAll("[data-page-number]");
+  if (numberTargets.length > 0) {
+    numberTargets.forEach(function(target) {
+      target.textContent = pageNumber;
+    });
+  }
+  const totalTargets = element.querySelectorAll("[data-page-total]");
+  const totalValue = totalPages !== undefined && totalPages !== null ? totalPages : "";
+  if (totalTargets.length > 0) {
+    totalTargets.forEach(function(target) {
+      target.textContent = totalValue;
+    });
+  }
+  if (numberTargets.length === 0 && totalTargets.length === 0) {
+    const fallback = ensurePageNumberPlaceholder(element);
+    if (fallback) {
+      fallback.textContent = totalPages !== undefined && totalPages !== null
+        ? "Page " + pageNumber + " of " + totalPages
+        : "Page " + pageNumber;
+    }
+  }
+}
+
 /**
  * @typedef {Object} ConfigDescriptor
  * @property {string} key Canonical configuration key used within the formatter.
@@ -63,6 +106,7 @@ const CONFIG_DESCRIPTORS = [
   { key: "repeatFooter004", datasetKey: "repeatFooter004", legacyKey: "repeat_footer004", defaultValue: false, parser: parseBooleanFlag },
   { key: "repeatFooter005", datasetKey: "repeatFooter005", legacyKey: "repeat_footer005", defaultValue: false, parser: parseBooleanFlag },
   { key: "repeatFooterLogo", datasetKey: "repeatFooterLogo", legacyKey: "repeat_footer_logo", defaultValue: false, parser: parseBooleanFlag },
+  { key: "repeatFooterPagenum", datasetKey: "repeatFooterPagenum", legacyKey: "repeat_footer_pagenum", defaultValue: false, parser: parseBooleanFlag },
   {
     key: "insertDummyRowItemWhileFormatTable",
     datasetKey: "insertDummyRowItemWhileFormatTable",
@@ -118,6 +162,7 @@ const FOOTER_VARIANTS = [
 ];
 
 const FOOTER_LOGO_VARIANT = { key: "footerLogo", className: "pfooter_logo", repeatFlag: "repeatFooterLogo" };
+const FOOTER_PAGENUM_VARIANT = { key: "footerPagenum", className: "pfooter_pagenum", repeatFlag: "repeatFooterPagenum" };
 
 const DEFAULT_CONFIG = CONFIG_DESCRIPTORS.reduce((accumulator, descriptor) => {
   accumulator[descriptor.key] = descriptor.defaultValue;
@@ -329,6 +374,8 @@ class PrintFormFormatter {
     this.formEl = formEl;
     this.config = config;
     this.debug = Boolean(config.debug);
+    this.currentPage = 1;
+    this.pageNumberClones = [];
   }
 
   log(message) {
@@ -373,6 +420,7 @@ class PrintFormFormatter {
       rowHeader: this.formEl.querySelector(".prowheader"),
       footerVariants,
       footerLogo: this.formEl.querySelector(`.${FOOTER_LOGO_VARIANT.className}`),
+      footerPagenum: this.formEl.querySelector(`.${FOOTER_PAGENUM_VARIANT.className}`),
       rows: Array.from(this.formEl.querySelectorAll(".prowitem"))
     };
   }
@@ -430,6 +478,9 @@ class PrintFormFormatter {
     if (this.config.repeatFooterLogo) {
       DomHelpers.appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
     }
+    if (this.config.repeatFooterPagenum) {
+      this.appendFooterPageNumber(container, sections, logFn);
+    }
   }
 
   appendFinalFooters(container, sections, logFn) {
@@ -437,6 +488,30 @@ class PrintFormFormatter {
       DomHelpers.appendClone(container, footer.element, logFn, footer.className);
     });
     DomHelpers.appendClone(container, sections.footerLogo, logFn, FOOTER_LOGO_VARIANT.className);
+    this.appendFooterPageNumber(container, sections, logFn);
+  }
+
+  appendFooterPageNumber(container, sections, logFn) {
+    if (!sections.footerPagenum) {
+      return;
+    }
+    const clone = sections.footerPagenum.cloneNode(true);
+    updatePageNumberContent(clone, this.currentPage, null);
+    container.appendChild(clone);
+    if (logFn) {
+      logFn(`append ${FOOTER_PAGENUM_VARIANT.className} page ${this.currentPage}`);
+    }
+    this.pageNumberClones.push({ node: clone, pageNumber: this.currentPage });
+  }
+
+  updatePageNumberTotals() {
+    if (!this.pageNumberClones.length) {
+      return;
+    }
+    const totalPages = this.currentPage;
+    this.pageNumberClones.forEach((entry) => {
+      updatePageNumberContent(entry.node, entry.pageNumber, totalPages);
+    });
   }
 
   measureSections(sections) {
@@ -445,7 +520,8 @@ class PrintFormFormatter {
       docInfos: {},
       rowHeader: DomHelpers.measureHeight(sections.rowHeader),
       footerVariants: {},
-      footerLogo: DomHelpers.measureHeight(sections.footerLogo)
+      footerLogo: DomHelpers.measureHeight(sections.footerLogo),
+      footerPagenum: DomHelpers.measureHeight(sections.footerPagenum)
     };
     sections.docInfos.forEach((docInfo) => {
       heights.docInfos[docInfo.key] = DomHelpers.measureHeight(docInfo.element);
@@ -466,6 +542,7 @@ class PrintFormFormatter {
       DomHelpers.markAsProcessed(footer.element, footer.className);
     });
     DomHelpers.markAsProcessed(sections.footerLogo, FOOTER_LOGO_VARIANT.className);
+    DomHelpers.markAsProcessed(sections.footerPagenum, FOOTER_PAGENUM_VARIANT.className);
   }
 
   renderRows(container, sections, heights, footerState, heightPerPage, footerSpacerTemplate, logFn) {
@@ -527,6 +604,7 @@ class PrintFormFormatter {
     );
     this.appendRepeatingFooters(container, sections, logFn);
     container.appendChild(DomHelpers.createPageBreakDivider());
+    this.currentPage += 1;
     this.appendRepeatingSections(container, sections, logFn);
     return filledHeight;
   }
@@ -576,20 +654,31 @@ class PrintFormFormatter {
     if (this.config.repeatFooterLogo) {
       available -= heights.footerLogo;
     }
+    if (this.config.repeatFooterPagenum) {
+      available -= heights.footerPagenum || 0;
+    }
     return Math.max(0, available);
   }
 
   computeFooterState(sections, heights) {
     const footerLogoHeight = heights.footerLogo || 0;
+    const footerPagenumHeight = heights.footerPagenum || 0;
     const totalFooterHeight = sections.footerVariants.reduce((sum, footer) => {
       const height = heights.footerVariants[footer.key] || 0;
       return sum + height;
     }, 0);
-    const totalFinal = totalFooterHeight + footerLogoHeight;
-    const repeating = sections.footerVariants.reduce((sum, footer) => {
+    const totalFinal = totalFooterHeight + footerLogoHeight + footerPagenumHeight;
+    const repeatingFooterHeight = sections.footerVariants.reduce((sum, footer) => {
       const height = heights.footerVariants[footer.key] || 0;
       return this.config[footer.repeatFlag] ? sum + height : sum;
-    }, this.config.repeatFooterLogo ? footerLogoHeight : 0);
+    }, 0);
+    let repeating = repeatingFooterHeight;
+    if (this.config.repeatFooterLogo) {
+      repeating += footerLogoHeight;
+    }
+    if (this.config.repeatFooterPagenum) {
+      repeating += footerPagenumHeight;
+    }
     const nonRepeating = Math.max(0, totalFinal - repeating);
     return {
       totalFinal,
@@ -662,6 +751,7 @@ class PrintFormFormatter {
       footerSpacerTemplate,
       logFn
     );
+    this.updatePageNumberTotals();
 
     container.classList.add("printform_formatter_processed");
     this.formEl.remove();

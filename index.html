@@ -39,6 +39,7 @@
 		    data-repeat-footer004="n"   : Repeat .pfooter004 per page.
 		    data-repeat-footer005="n"   : Repeat .pfooter005 per page.
 		    data-repeat-footer-logo="y"  : Repeat .pfooter_logo on every page.
+		    data-repeat-footer-pagenum="y"  : Repeat .pfooter_pagenum per page (auto page numbers).
 		    data-insert-dummy-row-item-while-format-table="y" : Fill remaining space with dummy rows.
 		    data-insert-dummy-row-while-format-table="y" : Add a single full-height dummy table.
 		    data-insert-footer-spacer-while-format-table="y" : Insert spacer div before the footer.
@@ -63,6 +64,7 @@
 			 data-repeat-footer004="n"
 			 data-repeat-footer005="y"
 			 data-repeat-footer-logo="y"
+			 data-repeat-footer-pagenum="y"
 			 data-insert-dummy-row-item-while-format-table="y"
 			 data-insert-dummy-row-while-format-table="y"
 			 data-insert-footer-spacer-while-format-table="y"
@@ -856,6 +858,23 @@
 					<td style="box-sizing:border-box;">
 						<!-- footer logo -->
 						<img src="./img/footer_logo.jpg" style="height: auto; width: 100%;">
+					</td>
+					<td style="box-sizing:border-box;"></td>
+				</tr>
+			</table>
+
+			<table cellpadding="0" cellspacing="0" style="table-layout:fixed;" border="0" class="paper_width pfooter_pagenum">
+				<tr>
+					<td style="box-sizing:border-box;width:15px;"></td>
+					<td style="box-sizing:border-box;width:inherit;"></td>
+					<td style="box-sizing:border-box;width:15px;"></td>
+				</tr>
+				<tr>
+					<td style="box-sizing:border-box;"></td>
+					<td style="box-sizing:border-box;">
+						<div style="font-size:12px;line-height:16px;text-align:right;" data-page-number-container>
+							Page <span data-page-number></span> of <span data-page-total></span>
+						</div>
 					</td>
 					<td style="box-sizing:border-box;"></td>
 				</tr>
