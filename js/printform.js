@@ -507,6 +507,31 @@ class PrintFormFormatter {
     return this.isPtacRow(row);
   }
 
+  initializePageContext(heightPerPage) {
+    return {
+      baseLimit: heightPerPage,
+      limit: heightPerPage,
+      skipRowHeader: false,
+      isPtacPage: false
+    };
+  }
+
+  refreshPageContextForRow(pageContext, row, heights) {
+    if (!pageContext) {
+      return pageContext;
+    }
+    const skipRowHeader = this.shouldSkipRowHeaderForRow(row);
+    const rowHeaderHeight = heights.rowHeader || 0;
+    pageContext.skipRowHeader = skipRowHeader;
+    pageContext.isPtacPage = this.isPtacRow(row);
+    pageContext.limit = pageContext.baseLimit + (skipRowHeader ? rowHeaderHeight : 0);
+    return pageContext;
+  }
+
+  shouldSkipDummyRowItemsForContext(pageContext) {
+    return Boolean(pageContext && pageContext.isPtacPage && !this.config.insertPtacDummyRowItems);
+  }
+
   expandPtacSegments() {
     if (this.formEl.dataset.ptacExpanded === "true") {
       return;
@@ -729,9 +754,7 @@ class PrintFormFormatter {
 
   renderRows(container, sections, heights, footerState, heightPerPage, footerSpacerTemplate, logFn) {
     let currentHeight = 0;
-    let currentPageLimit = heightPerPage;
-    let currentSkipRowHeader = false;
-    let currentPageIsPtac = false;
+    const pageContext = this.initializePageContext(heightPerPage);
     sections.rows.forEach((row, index) => {
       const rowHeight = DomHelpers.measureHeight(row);
       if (!rowHeight) {
@@ -740,15 +763,13 @@ class PrintFormFormatter {
       }
 
       if (currentHeight === 0) {
-        currentSkipRowHeader = this.shouldSkipRowHeaderForRow(row);
-        currentPageIsPtac = this.isPtacRow(row);
-        currentPageLimit = heightPerPage + (currentSkipRowHeader ? heights.rowHeader : 0);
+        this.refreshPageContextForRow(pageContext, row, heights);
         currentHeight += this.ensureFirstPageSections(
           container,
           sections,
           heights,
           logFn,
-          currentSkipRowHeader
+          pageContext.skipRowHeader
         );
       }
 
@@ -758,61 +779,57 @@ class PrintFormFormatter {
 
       if (row.classList.contains("tb_page_break_before")) {
         currentHeight -= rowHeight;
+        const skipDummyRowItems = this.shouldSkipDummyRowItemsForContext(pageContext);
         const nextSkipRowHeader = this.shouldSkipRowHeaderForRow(row);
-        const skipDummyRowItems = currentPageIsPtac && !this.config.insertPtacDummyRowItems;
         currentHeight = this.prepareNextPage(
           container,
           sections,
           logFn,
-          currentPageLimit,
+          pageContext.limit,
           currentHeight,
           footerState,
           footerSpacerTemplate,
           nextSkipRowHeader,
           skipDummyRowItems
         );
-        currentSkipRowHeader = nextSkipRowHeader;
-        currentPageIsPtac = isPtacRow;
-        currentPageLimit = heightPerPage + (currentSkipRowHeader ? heights.rowHeader : 0);
+        this.refreshPageContextForRow(pageContext, row, heights);
         DomHelpers.appendRowItem(container, row, logFn, index);
         currentHeight = rowHeight;
         if (!isPtacRow) {
-          currentPageIsPtac = false;
+          pageContext.isPtacPage = false;
         }
-      } else if (currentHeight <= currentPageLimit) {
+      } else if (currentHeight <= pageContext.limit) {
         DomHelpers.appendRowItem(container, row, logFn, index);
         if (!isPtacRow) {
-          currentPageIsPtac = false;
+          pageContext.isPtacPage = false;
         }
       } else {
         currentHeight -= rowHeight;
+        const skipDummyRowItems = this.shouldSkipDummyRowItemsForContext(pageContext);
         const nextSkipRowHeader = this.shouldSkipRowHeaderForRow(row);
-        const skipDummyRowItems = currentPageIsPtac && !this.config.insertPtacDummyRowItems;
         currentHeight = this.prepareNextPage(
           container,
           sections,
           logFn,
-          currentPageLimit,
+          pageContext.limit,
           currentHeight,
           footerState,
           footerSpacerTemplate,
           nextSkipRowHeader,
           skipDummyRowItems
         );
-        currentSkipRowHeader = nextSkipRowHeader;
-        currentPageIsPtac = isPtacRow;
-        currentPageLimit = heightPerPage + (currentSkipRowHeader ? heights.rowHeader : 0);
+        this.refreshPageContextForRow(pageContext, row, heights);
         DomHelpers.appendRowItem(container, row, logFn, index);
         currentHeight = rowHeight;
         if (!isPtacRow) {
-          currentPageIsPtac = false;
+          pageContext.isPtacPage = false;
         }
       }
     });
     return {
       currentHeight,
-      pageLimit: currentPageLimit,
-      isPtacPage: currentPageIsPtac
+      pageLimit: pageContext.limit,
+      isPtacPage: pageContext.isPtacPage
     };
   }
 
