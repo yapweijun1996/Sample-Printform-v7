@@ -255,7 +255,14 @@ const PADDT_CONFIG_DESCRIPTORS = [
   { key: "insertPaddtDummyRowItems", datasetKey: "insertPaddtDummyRowItems", legacyKey: "insert_paddt_dummy_row_items", defaultValue: true, parser: parseBooleanFlag },
   { key: "paddtMaxWordsPerSegment", datasetKey: "paddtMaxWordsPerSegment", legacyKey: "paddt_max_words_per_segment", defaultValue: 200, parser: parseNumber },
   { key: "repeatPaddtRowheader", datasetKey: "repeatPaddtRowheader", legacyKey: "repeat_paddt_rowheader", defaultValue: true, parser: parseBooleanFlag },
-  { key: "paddtDebug", datasetKey: "paddtDebug", legacyKey: "paddt_debug", defaultValue: false, parser: parseBooleanFlag }
+  { key: "paddtDebug", datasetKey: "paddtDebug", legacyKey: "paddt_debug", defaultValue: false, parser: parseBooleanFlag },
+
+  // PADDT-specific docinfo toggles (show/hide on PADDT pages only)
+  { key: "repeatPaddtDocinfo", datasetKey: "repeatPaddtDocinfo", legacyKey: "repeat_paddt_docinfo", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatPaddtDocinfo002", datasetKey: "repeatPaddtDocinfo002", legacyKey: "repeat_paddt_docinfo002", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatPaddtDocinfo003", datasetKey: "repeatPaddtDocinfo003", legacyKey: "repeat_paddt_docinfo003", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatPaddtDocinfo004", datasetKey: "repeatPaddtDocinfo004", legacyKey: "repeat_paddt_docinfo004", defaultValue: true, parser: parseBooleanFlag },
+  { key: "repeatPaddtDocinfo005", datasetKey: "repeatPaddtDocinfo005", legacyKey: "repeat_paddt_docinfo005", defaultValue: true, parser: parseBooleanFlag }
 ];
 
 const DEFAULT_PADDT_CONFIG = PADDT_CONFIG_DESCRIPTORS.reduce(function(acc, d) {
@@ -1253,9 +1260,22 @@ class PrintFormFormatter {
       container.appendChild(DomHelpers.createPageBreakDivider());
       this.currentPage += 1;
 
+      // PADDT: filter docInfos per PADDT-specific toggles (defaults to true for backward compatibility)
+      var paddtDocinfoFlags = {
+        docInfo: this.paddtConfig.repeatPaddtDocinfo,
+        docInfo002: this.paddtConfig.repeatPaddtDocinfo002,
+        docInfo003: this.paddtConfig.repeatPaddtDocinfo003,
+        docInfo004: this.paddtConfig.repeatPaddtDocinfo004,
+        docInfo005: this.paddtConfig.repeatPaddtDocinfo005
+      };
+      var paddtDocInfos = sections.docInfos.filter(function(di) {
+        var flag = paddtDocinfoFlags[di.key];
+        return flag === undefined ? true : !!flag;
+      });
+
       const paddtSections = {
         header: sections.header,
-        docInfos: sections.docInfos,
+        docInfos: paddtDocInfos,
         rowHeader: sections.rowHeader,
         // 不包含业务 footer（如 pfooter/pfooter002...），仅保留 logo 与页码
         footerVariants: [],
