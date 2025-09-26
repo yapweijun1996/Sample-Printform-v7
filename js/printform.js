@@ -249,6 +249,51 @@ function getPrintformConfig(formEl, overrides = {}) {
   return merged;
 }
 
+// ===== PADDT configuration (独立配置) =====
+const PADDT_CONFIG_DESCRIPTORS = [
+  { key: "repeatPaddt", datasetKey: "repeatPaddt", legacyKey: "repeat_paddt", defaultValue: true, parser: parseBooleanFlag },
+  { key: "insertPaddtDummyRowItems", datasetKey: "insertPaddtDummyRowItems", legacyKey: "insert_paddt_dummy_row_items", defaultValue: true, parser: parseBooleanFlag },
+  { key: "paddtMaxWordsPerSegment", datasetKey: "paddtMaxWordsPerSegment", legacyKey: "paddt_max_words_per_segment", defaultValue: 200, parser: parseNumber },
+  { key: "repeatPaddtRowheader", datasetKey: "repeatPaddtRowheader", legacyKey: "repeat_paddt_rowheader", defaultValue: true, parser: parseBooleanFlag },
+  { key: "paddtDebug", datasetKey: "paddtDebug", legacyKey: "paddt_debug", defaultValue: false, parser: parseBooleanFlag }
+];
+
+const DEFAULT_PADDT_CONFIG = PADDT_CONFIG_DESCRIPTORS.reduce(function(acc, d) {
+  acc[d.key] = d.defaultValue;
+  return acc;
+}, {});
+
+function getPaddtLegacyConfig() {
+  return readConfigFromLegacy(PADDT_CONFIG_DESCRIPTORS);
+}
+
+function getPaddtDatasetConfig(dataset) {
+  return readConfigFromDataset(PADDT_CONFIG_DESCRIPTORS, dataset);
+}
+
+/**
+ * 获取 paddt 配置（与主配置独立）(中文解释: paddt 独立配置读取)
+ */
+function getPaddtConfig(formEl, overrides) {
+  overrides = overrides || {};
+  var legacy = getPaddtLegacyConfig();
+  var datasetConfig = getPaddtDatasetConfig((formEl && formEl.dataset) || {});
+  var merged = {};
+  for (var k in DEFAULT_PADDT_CONFIG) { if (Object.prototype.hasOwnProperty.call(DEFAULT_PADDT_CONFIG, k)) merged[k] = DEFAULT_PADDT_CONFIG[k]; }
+  for (var k1 in legacy) { if (Object.prototype.hasOwnProperty.call(legacy, k1)) merged[k1] = legacy[k1]; }
+  for (var k2 in datasetConfig) { if (Object.prototype.hasOwnProperty.call(datasetConfig, k2)) merged[k2] = datasetConfig[k2]; }
+  for (var k3 in overrides) { if (Object.prototype.hasOwnProperty.call(overrides, k3)) merged[k3] = overrides[k3]; }
+  merged.paddtDebug = parseBooleanFlag(merged.paddtDebug, DEFAULT_PADDT_CONFIG.paddtDebug);
+  merged.paddtMaxWordsPerSegment = parseNumber(merged.paddtMaxWordsPerSegment, DEFAULT_PADDT_CONFIG.paddtMaxWordsPerSegment);
+  if (!Number.isFinite(merged.paddtMaxWordsPerSegment) || merged.paddtMaxWordsPerSegment <= 0) {
+    merged.paddtMaxWordsPerSegment = DEFAULT_PADDT_CONFIG.paddtMaxWordsPerSegment;
+  }
+  return merged;
+}
+
+// fallback 常量 (中文解释: 兜底常量)
+var PADDT_MAX_WORDS_PER_SEGMENT = 200;
+
 function createDummyRowTable(config, height) {
   const table = document.createElement("table");
   table.className = "dummy_row";
@@ -396,7 +441,7 @@ const DomHelpers = {
   appendRowItem
 };
 
-const ROW_SELECTOR = ".prowitem, .ptac-rowitem";
+const ROW_SELECTOR = ".prowitem, .ptac-rowitem, .paddt-rowitem";
 
 var PTAC_MAX_WORDS_PER_SEGMENT = 200;
 
@@ -435,11 +480,23 @@ function splitParagraphIntoHtmlChunks(node, maxWords) {
   return chunks;
 }
 
+// ===== paddt 文本分割/转换封装 (中文解释: paddt 文本处理包装) =====
+function convertPaddtWordsToHtml(node, words) {
+  return convertWordsToHtml(node, words);
+}
+
+function splitPaddtParagraphIntoHtmlChunks(node, maxWords) {
+  return splitParagraphIntoHtmlChunks(node, maxWords);
+}
+
 class PrintFormFormatter {
   constructor(formEl, config) {
     this.formEl = formEl;
     this.config = config;
     this.debug = Boolean(config.debug);
+    // paddt 独立配置 (中文解释: paddt 专用配置)
+    this.paddtConfig = getPaddtConfig(formEl, {});
+    this.paddtDebug = Boolean(this.paddtConfig.paddtDebug);
     this.currentPage = 1;
     this.pageNumberClones = [];
   }
@@ -458,6 +515,8 @@ class PrintFormFormatter {
   }
 
   collectSections() {
+    // paddt 段落扩展先执行，确保 .paddt 转换为 .paddt-rowitem (中文解释: 先展开 paddt)
+    this.expandPaddtSegments();
     this.expandPtacSegments();
     const docInfos = DOCINFO_VARIANTS.map((variant) => {
       const element = this.formEl.querySelector(`.${variant.className}`);
@@ -481,6 +540,12 @@ class PrintFormFormatter {
       };
     }).filter(Boolean);
 
+    // 分离 paddt 行，主流程不渲染 paddt（paddt 将在页脚之后另起分页渲染）
+    const allRows = Array.from(this.formEl.querySelectorAll(ROW_SELECTOR));
+    const paddtRows = allRows.filter((row) => this.isPaddtRow(row));
+    const mainRows = allRows.filter((row) => !this.isPaddtRow(row));
+    this.paddtRows = paddtRows;
+
     return {
       header: this.formEl.querySelector(".pheader"),
       docInfos,
@@ -488,8 +553,21 @@ class PrintFormFormatter {
       footerVariants,
       footerLogo: this.formEl.querySelector(`.${FOOTER_LOGO_VARIANT.className}`),
       footerPagenum: this.formEl.querySelector(`.${FOOTER_PAGENUM_VARIANT.className}`),
-      rows: Array.from(this.formEl.querySelectorAll(ROW_SELECTOR))
+      rows: mainRows
     };
+  }
+
+  // paddt 行识别 (中文解释: paddt 行判断)
+  isPaddtRow(row) {
+    if (!row) {
+      return false;
+    }
+    return (
+      row.classList.contains("paddt_segment") ||
+      row.classList.contains("paddt") ||
+      row.classList.contains("paddt-rowitem") ||
+      row.classList.contains("paddt-rowitem_processed")
+    );
   }
 
   isPtacRow(row) {
@@ -508,6 +586,7 @@ class PrintFormFormatter {
     if (!row) {
       return "prowitem";
     }
+    if (this.isPaddtRow(row)) return "paddt-rowitem";
     return this.isPtacRow(row) ? "ptac-rowitem" : "prowitem";
   }
 
@@ -518,10 +597,17 @@ class PrintFormFormatter {
     if (!this.config.repeatRowheader) {
       return false;
     }
-    if (this.config.repeatPtacRowheader) {
-      return false;
+    // PTAC
+    if (this.isPtacRow(row)) {
+      if (this.config.repeatPtacRowheader) return false;
+      return true;
     }
-    return this.isPtacRow(row);
+    // PADDT
+    if (this.isPaddtRow(row)) {
+      if (this.paddtConfig && this.paddtConfig.repeatPaddtRowheader) return false;
+      return true;
+    }
+    return false;
   }
 
   initializePageContext(heightPerPage) {
@@ -529,7 +615,8 @@ class PrintFormFormatter {
       baseLimit: heightPerPage,
       limit: heightPerPage,
       skipRowHeader: false,
-      isPtacPage: false
+      isPtacPage: false,
+      isPaddtPage: false
     };
   }
 
@@ -541,14 +628,112 @@ class PrintFormFormatter {
     const rowHeaderHeight = heights.rowHeader || 0;
     pageContext.skipRowHeader = skipRowHeader;
     pageContext.isPtacPage = this.isPtacRow(row);
+    pageContext.isPaddtPage = this.isPaddtRow(row);
     pageContext.limit = pageContext.baseLimit + (skipRowHeader ? rowHeaderHeight : 0);
     return pageContext;
   }
 
   shouldSkipDummyRowItemsForContext(pageContext) {
-    return Boolean(pageContext && pageContext.isPtacPage && !this.config.insertPtacDummyRowItems);
+    return Boolean(
+      pageContext &&
+      (
+        (pageContext.isPtacPage && !this.config.insertPtacDummyRowItems) ||
+        (pageContext.isPaddtPage && !(this.paddtConfig && this.paddtConfig.insertPaddtDummyRowItems))
+      )
+    );
   }
 
+  // ===== paddt 段落扩展 (独立管道) =====
+  expandPaddtSegments() {
+    if (this.formEl.dataset.paddtExpanded === "true") {
+      return;
+    }
+    const paddtTables = Array.from(this.formEl.querySelectorAll(".paddt"));
+    if (paddtTables.length === 0) {
+      this.formEl.dataset.paddtExpanded = "true";
+      return;
+    }
+
+    var maxWords = (this.paddtConfig && this.paddtConfig.paddtMaxWordsPerSegment) || PADDT_MAX_WORDS_PER_SEGMENT;
+
+    paddtTables.forEach((paddtRoot) => {
+      if (!paddtRoot || paddtRoot.dataset.paddtSegment === "true") {
+        return;
+      }
+
+      const contentWrapper = paddtRoot.querySelector("td > div") || paddtRoot.querySelector("td");
+      if (!contentWrapper) {
+        paddtRoot.classList.add("paddt-rowitem", "paddt_segment");
+        paddtRoot.dataset.paddtSegment = "true";
+        return;
+      }
+
+      const allParagraphs = Array.from(contentWrapper.querySelectorAll("p"));
+      var headingNode = null;
+      if (allParagraphs.length > 1) {
+        headingNode = allParagraphs.shift();
+      }
+      const paragraphs = allParagraphs;
+
+      if (paragraphs.length === 0) {
+        paddtRoot.classList.add("paddt-rowitem", "paddt_segment");
+        paddtRoot.dataset.paddtSegment = "true";
+        return;
+      }
+
+      const headingHTML = headingNode ? headingNode.outerHTML : "";
+      const paragraphHTML = paragraphs.reduce(function(accumulator, node) {
+        const chunks = splitPaddtParagraphIntoHtmlChunks(node, maxWords);
+        return accumulator.concat(chunks);
+      }, []);
+
+      if (paragraphHTML.length === 0) {
+        contentWrapper.innerHTML = headingHTML;
+        paddtRoot.classList.add("paddt-rowitem", "paddt_segment");
+        paddtRoot.dataset.paddtSegment = "true";
+        return;
+      }
+
+      const segments = [];
+      if (headingHTML) {
+        segments.push(headingHTML + paragraphHTML[0]);
+        for (var segIndex = 1; segIndex < paragraphHTML.length; segIndex += 1) {
+          segments.push(paragraphHTML[segIndex]);
+        }
+      } else {
+        for (var segIndexAlt = 0; segIndexAlt < paragraphHTML.length; segIndexAlt += 1) {
+          segments.push(paragraphHTML[segIndexAlt]);
+        }
+      }
+
+      if (segments.length === 0) {
+        contentWrapper.innerHTML = headingHTML;
+        paddtRoot.classList.add("paddt-rowitem", "paddt_segment");
+        paddtRoot.dataset.paddtSegment = "true";
+        return;
+      }
+
+      contentWrapper.innerHTML = segments[0];
+      paddtRoot.classList.add("paddt-rowitem", "paddt_segment");
+      paddtRoot.dataset.paddtSegment = "true";
+
+      var lastNode = paddtRoot;
+      for (var index = 1; index < segments.length; index += 1) {
+        const clone = paddtRoot.cloneNode(true);
+        clone.dataset.paddtSegment = "true";
+        const cloneWrapper = clone.querySelector("td > div") || clone.querySelector("td");
+        if (cloneWrapper) {
+          cloneWrapper.innerHTML = segments[index];
+        }
+        lastNode.parentNode.insertBefore(clone, lastNode.nextSibling);
+        lastNode = clone;
+      }
+    });
+
+    this.formEl.dataset.paddtExpanded = "true";
+  }
+
+  // ===== 既有 PTAC 段落扩展 =====
   expandPtacSegments() {
     if (this.formEl.dataset.ptacExpanded === "true") {
       return;
@@ -776,6 +961,7 @@ class PrintFormFormatter {
       const rowHeight = DomHelpers.measureHeight(row);
       const baseClass = this.getRowBaseClass(row);
       const isPtacRow = this.isPtacRow(row);
+      const isPaddtRow = this.isPaddtRow(row);
       if (!rowHeight) {
         DomHelpers.markAsProcessed(row, baseClass);
         return;
@@ -816,10 +1002,16 @@ class PrintFormFormatter {
         if (!isPtacRow) {
           pageContext.isPtacPage = false;
         }
+        if (!isPaddtRow) {
+          pageContext.isPaddtPage = false;
+        }
       } else if (currentHeight <= pageContext.limit) {
         DomHelpers.appendRowItem(container, row, logFn, index, baseClass);
         if (!isPtacRow) {
           pageContext.isPtacPage = false;
+        }
+        if (!isPaddtRow) {
+          pageContext.isPaddtPage = false;
         }
       } else {
         currentHeight -= rowHeight;
@@ -842,12 +1034,16 @@ class PrintFormFormatter {
         if (!isPtacRow) {
           pageContext.isPtacPage = false;
         }
+        if (!isPaddtRow) {
+          pageContext.isPaddtPage = false;
+        }
       }
     });
     return {
       currentHeight,
       pageLimit: pageContext.limit,
-      isPtacPage: pageContext.isPtacPage
+      isPtacPage: pageContext.isPtacPage,
+      isPaddtPage: pageContext.isPaddtPage
     };
   }
 
@@ -909,7 +1105,7 @@ class PrintFormFormatter {
 
   computeHeightPerPage(sections, heights) {
     let available = this.config.papersizeHeight;
-    if (this.config.repeatHeader) {
+    if (this.config.repeatHeader && sections.header) {
       available -= heights.header;
     }
     sections.docInfos.forEach((docInfo) => {
@@ -917,7 +1113,7 @@ class PrintFormFormatter {
         available -= heights.docInfos[docInfo.key] || 0;
       }
     });
-    if (this.config.repeatRowheader) {
+    if (this.config.repeatRowheader && sections.rowHeader) {
       available -= heights.rowHeader;
     }
     sections.footerVariants.forEach((footer) => {
@@ -925,10 +1121,10 @@ class PrintFormFormatter {
         available -= heights.footerVariants[footer.key] || 0;
       }
     });
-    if (this.config.repeatFooterLogo) {
+    if (this.config.repeatFooterLogo && sections.footerLogo) {
       available -= heights.footerLogo;
     }
-    if (this.config.repeatFooterPagenum) {
+    if (this.config.repeatFooterPagenum && sections.footerPagenum) {
       available -= heights.footerPagenum || 0;
     }
     return Math.max(0, available);
@@ -974,7 +1170,13 @@ class PrintFormFormatter {
     const lastPageLimit = renderState && renderState.pageLimit
       ? renderState.pageLimit
       : defaultHeightPerPage;
-    const skipDummyRowItems = renderState && renderState.isPtacPage && !this.config.insertPtacDummyRowItems;
+    const skipDummyRowItems = Boolean(
+      renderState &&
+      (
+        (renderState.isPtacPage && !this.config.insertPtacDummyRowItems) ||
+        (renderState.isPaddtPage && !(this.paddtConfig && this.paddtConfig.insertPaddtDummyRowItems))
+      )
+    );
     const allowance = footerState.totalFinal - footerState.repeating;
     const heightWithFinalFooters = baseHeight + allowance;
     if (heightWithFinalFooters <= lastPageLimit) {
@@ -1044,6 +1246,49 @@ class PrintFormFormatter {
       footerSpacerTemplate,
       logFn
     );
+
+    // paddt after footer005: paddt 页面要有 footer logo 与页码（仅此两类），并在所有常规页脚之后开始
+    if (this.paddtRows && this.paddtRows.length) {
+      // 先强制换页并推进页码（确保 paddt 出现在 footer005 之后）
+      container.appendChild(DomHelpers.createPageBreakDivider());
+      this.currentPage += 1;
+
+      const paddtSections = {
+        header: sections.header,
+        docInfos: sections.docInfos,
+        rowHeader: sections.rowHeader,
+        // 不包含业务 footer（如 pfooter/pfooter002...），仅保留 logo 与页码
+        footerVariants: [],
+        footerLogo: sections.footerLogo,
+        footerPagenum: sections.footerPagenum,
+        rows: this.paddtRows
+      };
+
+      // 计算 paddt 页脚状态与可用高度（考虑 repeatFooterLogo/repeatFooterPagenum）
+      const paddtFooterState = this.computeFooterState(paddtSections, heights);
+      const paddtHeightPerPage = this.computeHeightPerPage(paddtSections, heights);
+
+      const paddtRenderState = this.renderRows(
+        container,
+        paddtSections,
+        heights,
+        paddtFooterState,
+        paddtHeightPerPage,
+        footerSpacerTemplate,
+        logFn
+      );
+
+      this.finalizeDocument(
+        container,
+        paddtSections,
+        paddtFooterState,
+        paddtHeightPerPage,
+        paddtRenderState,
+        footerSpacerTemplate,
+        logFn
+      );
+    }
+
     this.updatePageNumberTotals();
 
     container.classList.add("printform_formatter_processed");
