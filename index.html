@@ -20,20 +20,20 @@
 	</head>
 	<body>
 		<!--
-		  Printform container configuration — keep these data-* attributes in sync with
-		  DEFAULT_CONFIG in js/printform.js. Unless noted, the toggles accept
-		  y/yes/true/1 or n/no/false/0.
-		    data-papersize-width="750"   : Page width in pixels (print target <= 750px).
-		    data-papersize-height="1050" : Page height in pixels.
-		    data-height-of-dummy-row-item="26" : Height (px) used when auto-filling rows.
-		    data-repeat-header="y"       : Repeat .pheader on every page.
-		    data-repeat-docinfo="y"      : Repeat .pdocinfo table on every page.
+			  Printform container configuration — keep these data-* attributes in sync with
+			  DEFAULT_CONFIG in js/printform.js. Unless noted, the toggles accept
+			  y/yes/true/1 or n/no/false/0.
+			    data-papersize-width="750"   : Page width in pixels (print target <= 750px).
+			    data-papersize-height="1050" : Page height in pixels.
+			    data-height-of-dummy-row-item="26" : Height (px) used when auto-filling rows.
+			    data-repeat-header="y"       : Repeat .pheader on every page.
+			    data-repeat-docinfo="y"      : Repeat .pdocinfo table on every page.
 		    data-repeat-docinfo002="n"   : Repeat .pdocinfo002 per page (set to "y" when needed).
 		    data-repeat-docinfo003="y"   : Repeat .pdocinfo003 per page.
 		    data-repeat-docinfo004="y"   : Repeat .pdocinfo004 per page.
 		    data-repeat-docinfo005="y"   : Repeat .pdocinfo005 per page.
-		    data-repeat-rowheader="y"    : Repeat .prowheader on every page.
-		    data-repeat-ptac-rowheader="y" : Repeat .prowheader on PTAC-only continuation pages.
+			    data-repeat-rowheader="y"    : Repeat .prowheader on every page.
+			    data-repeat-ptac-rowheader="y" : Repeat .prowheader on PTAC-only continuation pages (PTAC rows use .ptac-rowitem).
 		    data-repeat-footer="n"       : Repeat .pfooter on every page.
 		    data-repeat-footer002="n"   : Repeat .pfooter002 per page.
 		    data-repeat-footer003="n"   : Repeat .pfooter003 per page.
@@ -42,7 +42,8 @@
 		    data-repeat-footer-logo="y"  : Repeat .pfooter_logo on every page.
 		    data-repeat-footer-pagenum="y"  : Repeat .pfooter_pagenum per page (auto page numbers).
 		    data-insert-dummy-row-item-while-format-table="y" : Fill remaining space with dummy rows.
-		    data-insert-ptac-dummy-row-items="y" : Allow PTAC-only pages to use dummy row items.
+			    data-insert-ptac-dummy-row-items="y" : Allow PTAC-only pages to use dummy row items.
+			      PTAC terms are expanded into multiple .ptac-rowitem blocks during formatting.
 		    data-insert-dummy-row-while-format-table="y" : Add a single full-height dummy table.
 		    data-insert-footer-spacer-while-format-table="y" : Insert spacer div before the footer.
 		    data-insert-footer-spacer-with-dummy-row-item-while-format-table="y" : Spacer + dummy rows.
@@ -715,7 +716,9 @@
 				</tr>
 			</table>
 			
-			<!-- PTAC terms appear once after itemized rows and before footers -->
+			<!-- PTAC terms appear once after itemized rows and before footers.
+			     js/printform.js splits this table into sequential .ptac-rowitem blocks
+			     so pagination can treat each PTAC chunk like a standard row. -->
 			<table cellpadding="0" cellspacing="0" style="table-layout:fixed;" border="0" class="paper_width ptac">
 				<tr>
 					<td style="box-sizing:border-box;width:15px;"></td>

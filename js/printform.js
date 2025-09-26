@@ -378,11 +378,14 @@ function appendClone(target, element, logFn, label) {
   return clone;
 }
 
-function appendRowItem(target, element, logFn, index) {
+function appendRowItem(target, element, logFn, index, label) {
   if (!element) return;
   const clone = element.cloneNode(true);
   target.appendChild(clone);
-  if (logFn) logFn(`append prowitem ${index}`);
+  if (logFn) {
+    const resolvedLabel = label || "prowitem";
+    logFn(`append ${resolvedLabel} ${index}`);
+  }
 }
 
 const DomHelpers = {
@@ -392,6 +395,8 @@ const DomHelpers = {
   appendClone,
   appendRowItem
 };
+
+const ROW_SELECTOR = ".prowitem, .ptac-rowitem";
 
 var PTAC_MAX_WORDS_PER_SEGMENT = 200;
 
@@ -483,7 +488,7 @@ class PrintFormFormatter {
       footerVariants,
       footerLogo: this.formEl.querySelector(`.${FOOTER_LOGO_VARIANT.className}`),
       footerPagenum: this.formEl.querySelector(`.${FOOTER_PAGENUM_VARIANT.className}`),
-      rows: Array.from(this.formEl.querySelectorAll(".prowitem"))
+      rows: Array.from(this.formEl.querySelectorAll(ROW_SELECTOR))
     };
   }
 
@@ -491,7 +496,19 @@ class PrintFormFormatter {
     if (!row) {
       return false;
     }
-    return row.classList.contains("ptac_segment") || row.classList.contains("ptac");
+    return (
+      row.classList.contains("ptac_segment") ||
+      row.classList.contains("ptac") ||
+      row.classList.contains("ptac-rowitem") ||
+      row.classList.contains("ptac-rowitem_processed")
+    );
+  }
+
+  getRowBaseClass(row) {
+    if (!row) {
+      return "prowitem";
+    }
+    return this.isPtacRow(row) ? "ptac-rowitem" : "prowitem";
   }
 
   shouldSkipRowHeaderForRow(row) {
@@ -549,7 +566,7 @@ class PrintFormFormatter {
 
       const contentWrapper = ptacRoot.querySelector("td > div") || ptacRoot.querySelector("td");
       if (!contentWrapper) {
-        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.classList.add("ptac-rowitem", "ptac_segment");
         ptacRoot.dataset.ptacSegment = "true";
         return;
       }
@@ -562,7 +579,7 @@ class PrintFormFormatter {
       const paragraphs = allParagraphs;
 
       if (paragraphs.length === 0) {
-        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.classList.add("ptac-rowitem", "ptac_segment");
         ptacRoot.dataset.ptacSegment = "true";
         return;
       }
@@ -575,7 +592,7 @@ class PrintFormFormatter {
 
       if (paragraphHTML.length === 0) {
         contentWrapper.innerHTML = headingHTML;
-        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.classList.add("ptac-rowitem", "ptac_segment");
         ptacRoot.dataset.ptacSegment = "true";
         return;
       }
@@ -594,13 +611,13 @@ class PrintFormFormatter {
 
       if (segments.length === 0) {
         contentWrapper.innerHTML = headingHTML;
-        ptacRoot.classList.add("prowitem", "ptac_segment");
+        ptacRoot.classList.add("ptac-rowitem", "ptac_segment");
         ptacRoot.dataset.ptacSegment = "true";
         return;
       }
 
       contentWrapper.innerHTML = segments[0];
-      ptacRoot.classList.add("prowitem", "ptac_segment");
+      ptacRoot.classList.add("ptac-rowitem", "ptac_segment");
       ptacRoot.dataset.ptacSegment = "true";
 
       var lastNode = ptacRoot;
@@ -757,8 +774,10 @@ class PrintFormFormatter {
     const pageContext = this.initializePageContext(heightPerPage);
     sections.rows.forEach((row, index) => {
       const rowHeight = DomHelpers.measureHeight(row);
+      const baseClass = this.getRowBaseClass(row);
+      const isPtacRow = this.isPtacRow(row);
       if (!rowHeight) {
-        DomHelpers.markAsProcessed(row, "prowitem");
+        DomHelpers.markAsProcessed(row, baseClass);
         return;
       }
 
@@ -774,8 +793,7 @@ class PrintFormFormatter {
       }
 
       currentHeight += rowHeight;
-      DomHelpers.markAsProcessed(row, "prowitem");
-      const isPtacRow = this.isPtacRow(row);
+      DomHelpers.markAsProcessed(row, baseClass);
 
       if (row.classList.contains("tb_page_break_before")) {
         currentHeight -= rowHeight;
@@ -793,13 +811,13 @@ class PrintFormFormatter {
           skipDummyRowItems
         );
         this.refreshPageContextForRow(pageContext, row, heights);
-        DomHelpers.appendRowItem(container, row, logFn, index);
+        DomHelpers.appendRowItem(container, row, logFn, index, baseClass);
         currentHeight = rowHeight;
         if (!isPtacRow) {
           pageContext.isPtacPage = false;
         }
       } else if (currentHeight <= pageContext.limit) {
-        DomHelpers.appendRowItem(container, row, logFn, index);
+        DomHelpers.appendRowItem(container, row, logFn, index, baseClass);
         if (!isPtacRow) {
           pageContext.isPtacPage = false;
         }
@@ -819,7 +837,7 @@ class PrintFormFormatter {
           skipDummyRowItems
         );
         this.refreshPageContextForRow(pageContext, row, heights);
-        DomHelpers.appendRowItem(container, row, logFn, index);
+        DomHelpers.appendRowItem(container, row, logFn, index, baseClass);
         currentHeight = rowHeight;
         if (!isPtacRow) {
           pageContext.isPtacPage = false;
